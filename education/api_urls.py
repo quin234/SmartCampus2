@@ -94,6 +94,7 @@ urlpatterns = [
     path('admin/export/units/', api_views.api_admin_export_units, name='api_admin_export_units'),
     path('admin/export/courses/', api_views.api_admin_export_courses, name='api_admin_export_courses'),
     path('admin/export/students/', api_views.api_admin_export_students, name='api_admin_export_students'),
+    path('admin/export/students/pdf/', api_views.api_admin_export_students_pdf, name='api_admin_export_students_pdf'),
     
     # Course-Unit Assignment API
     path('courseunits/', api_views.api_courseunits_list, name='api_courseunits_list'),
@@ -106,12 +107,17 @@ urlpatterns = [
     path('announcements/', api_views.api_announcements_list, name='api_announcements_list'),
     path('announcements/<int:pk>/', api_views.api_announcement_detail, name='api_announcement_detail'),
     
-    # Transcript Template & Generation API (Admin)
-    path('admin/transcript-template/', api_views.api_transcript_template, name='api_transcript_template'),
-    path('admin/generate-transcript/', api_views.api_generate_transcript, name='api_generate_transcript'),
+    # Report Template Mappings API (Admin)
+    path('admin/report-template-mapping/', api_views.api_report_template_mapping, name='api_report_template_mapping'),
     
     # Report Templates API
     path('reports/templates/', api_views.api_report_templates_list, name='api_report_templates_list'),
     path('reports/templates/<int:template_id>/', api_views.api_report_template_detail, name='api_report_template_detail'),
+    
+    # Student PDF Downloads API
+    path('student/download/transcript-pdf/', api_views.api_student_download_transcript_pdf, name='api_student_download_transcript_pdf'),
+    path('student/download/results-pdf/', api_views.api_student_download_results_pdf, name='api_student_download_results_pdf'),
+    path('student/download/registered-units-pdf/', api_views.api_student_download_registered_units_pdf, name='api_student_download_registered_units_pdf'),
+    path('student/download/fee-structure-pdf/', api_views.api_student_download_fee_structure_pdf, name='api_student_download_fee_structure_pdf'),
 ]
 

@@ -1181,81 +1181,7 @@ class SchoolRegistration(models.Model):
         return f"{self.school_name} - {self.get_status_display()}"
 
 
-def transcript_template_upload_path(instance, filename):
-    """Generate upload path for transcript templates"""
-    return f'transcripts/templates/{instance.college.id}/{filename}'
-
-
-class TranscriptTemplate(models.Model):
-    """Transcript template with coordinate-based field positions"""
-    TEMPLATE_TYPE_CHOICES = [
-        ('pdf', 'PDF'),
-        ('image', 'Image (PNG/JPG) - Deprecated'),
-    ]
-    
-    college = models.ForeignKey(College, on_delete=models.CASCADE, related_name='transcript_templates')
-    name = models.CharField(max_length=200, default='Default Transcript Template', help_text="Template name")
-    template_file = models.FileField(upload_to=transcript_template_upload_path, help_text="Upload PDF template (PDF templates only - no image conversion)")
-    template_type = models.CharField(max_length=10, choices=TEMPLATE_TYPE_CHOICES, default='pdf', help_text="Note: Only PDF templates are supported. Image templates are deprecated.")
-    is_active = models.BooleanField(default=True, help_text="Only one active template per college")
-    
-    # Field positions (stored as JSON)
-    # Format: {
-    #   'student_name': {'x': 100, 'y': 200, 'font_size': 14, 'font_family': 'Helvetica'},
-    #   'admission_number': {'x': 100, 'y': 220, 'font_size': 12},
-    #   'college_name': {'x': 300, 'y': 50, 'font_size': 16},
-    #   'results_table': {
-    #       'start_x': 50, 'start_y': 300,
-    #       'row_height': 20,
-    #       'columns': {
-    #           'unit_code': {'x_offset': 0, 'width': 80},
-    #           'unit_name': {'x_offset': 80, 'width': 200},
-    #           'academic_year': {'x_offset': 280, 'width': 100},
-    #           'semester': {'x_offset': 380, 'width': 60},
-    #           'cat_marks': {'x_offset': 440, 'width': 60},
-    #           'exam_marks': {'x_offset': 500, 'width': 60},
-    #           'total_marks': {'x_offset': 560, 'width': 60},
-    #           'grade': {'x_offset': 620, 'width': 40}
-    #       }
-    #   },
-    #   'generation_date': {'x': 400, 'y': 500, 'font_size': 10}
-    # }
-    field_positions = models.JSONField(default=dict, blank=True, help_text="Field positions and styling (JSON)")
-    
-    # Margins for content area (in points, 1 point = 1/72 inch)
-    margin_top = models.FloatField(default=72.0, help_text="Top margin in points (default: 72pt = 1 inch)")
-    margin_bottom = models.FloatField(default=72.0, help_text="Bottom margin in points (default: 72pt = 1 inch)")
-    margin_left = models.FloatField(default=72.0, help_text="Left margin in points (default: 72pt = 1 inch)")
-    margin_right = models.FloatField(default=72.0, help_text="Right margin in points (default: 72pt = 1 inch)")
-    
-    uploaded_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='uploaded_transcript_templates')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        db_table = 'transcript_templates'
-        ordering = ['-uploaded_at']
-        indexes = [
-            models.Index(fields=['college', 'is_active']),
-        ]
-    
-    def __str__(self):
-        return f"{self.college.name} - {self.name}"
-    
-    def clean(self):
-        """Ensure only one active template per college"""
-        from django.core.exceptions import ValidationError
-        if self.is_active:
-            existing_active = TranscriptTemplate.objects.filter(
-                college=self.college,
-                is_active=True
-            ).exclude(pk=self.pk)
-            if existing_active.exists():
-                raise ValidationError('Only one active template is allowed per college. Please deactivate the existing template first.')
-    
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
+# TranscriptTemplate model has been removed - reports now use ReportTemplate with mappings
 
 
 class Announcement(models.Model):
@@ -1407,14 +1333,30 @@ class ReportTemplate(models.Model):
         ('custom', 'Custom Report'),
     ]
     
+    PAGE_SIZE_CHOICES = [
+        ('A4', 'A4 (794 × 1123 px)'),
+        ('A3', 'A3 (1123 × 1587 px)'),
+        ('A5', 'A5 (559 × 794 px)'),
+        ('Letter', 'Letter (816 × 1056 px)'),
+    ]
+    
+    # Page size dimensions in pixels (width × height at 96 DPI)
+    PAGE_DIMENSIONS = {
+        'A4': (794, 1123),
+        'A3': (1123, 1587),
+        'A5': (559, 794),
+        'Letter': (816, 1056),
+    }
+    
     college = models.ForeignKey(College, on_delete=models.CASCADE, related_name='report_templates')
     name = models.CharField(max_length=200, help_text="Template name")
     report_type = models.CharField(max_length=50, choices=REPORT_TYPE_CHOICES, default='custom')
     description = models.TextField(blank=True, help_text="Template description")
     
-    # Canvas settings
-    canvas_width = models.IntegerField(default=800, help_text="Canvas width in pixels")
-    canvas_height = models.IntegerField(default=1000, help_text="Canvas height in pixels")
+    # Page size and canvas settings
+    page_size = models.CharField(max_length=20, choices=PAGE_SIZE_CHOICES, default='A4', help_text="Page size for the template")
+    canvas_width = models.IntegerField(default=794, help_text="Canvas width in pixels")
+    canvas_height = models.IntegerField(default=1123, help_text="Canvas height in pixels")
     
     # Elements stored as JSON: list of elements with type, content, position, style, etc.
     elements = models.JSONField(default=list, help_text="Array of report elements (text boxes, images, etc.)")
@@ -1436,6 +1378,69 @@ class ReportTemplate(models.Model):
     def __str__(self):
         return f"{self.name} - {self.college.name}"
     
-    def is_valid(self):
-        """Check if the code is valid (not expired and not verified)"""
-        return not self.is_expired() and not self.is_verified
+    def get_page_dimensions(self):
+        """Get width and height for the selected page size"""
+        return self.PAGE_DIMENSIONS.get(self.page_size, self.PAGE_DIMENSIONS['A4'])
+    
+    def update_canvas_to_page_size(self):
+        """Update canvas dimensions to match the selected page size"""
+        width, height = self.get_page_dimensions()
+        self.canvas_width = width
+        self.canvas_height = height
+        self.save(update_fields=['canvas_width', 'canvas_height'])
+
+
+class ReportTemplateMapping(models.Model):
+    """Model to store which template is used for each report type per college"""
+    REPORT_TYPE_CHOICES = [
+        ('transcript', 'Transcript'),
+        ('fee_structure', 'Fee Structure'),
+        ('exam_card', 'Exam Card'),
+    ]
+    
+    college = models.OneToOneField(College, on_delete=models.CASCADE, related_name='report_template_mapping')
+    transcript_template = models.ForeignKey(
+        ReportTemplate, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='transcript_mappings',
+        help_text="Template to use for Transcript reports"
+    )
+    fee_structure_template = models.ForeignKey(
+        ReportTemplate, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='fee_structure_mappings',
+        help_text="Template to use for Fee Structure reports"
+    )
+    exam_card_template = models.ForeignKey(
+        ReportTemplate, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='exam_card_mappings',
+        help_text="Template to use for Exam Card reports"
+    )
+    updated_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='updated_report_mappings')
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'report_template_mappings'
+        verbose_name = 'Report Template Mapping'
+        verbose_name_plural = 'Report Template Mappings'
+    
+    def __str__(self):
+        return f"Report Template Mapping - {self.college.name}"
+    
+    def get_template_for_report_type(self, report_type):
+        """Get the template for a specific report type"""
+        if report_type == 'transcript':
+            return self.transcript_template
+        elif report_type == 'fee_structure':
+            return self.fee_structure_template
+        elif report_type == 'exam_card':
+            return self.exam_card_template
+        return None

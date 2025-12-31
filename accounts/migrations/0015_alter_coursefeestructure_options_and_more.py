@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('accounts', '0014_add_semester_to_course_fee_structure'),
-        ('education', '0025_alter_transcripttemplate_template_file_and_more'),
+        ('education', '0023_collegetimetable_file_alter_collegetimetable_image'),
     ]
 
     operations = [

@@ -18,7 +18,13 @@ import csv
 from io import StringIO
 from datetime import datetime
 
-from .models import College, Student, CollegeCourse, CollegeUnit, CustomUser, Enrollment, Result, CollegeCourseUnit, GlobalUnit, GlobalCourse, CollegeTimetable, Announcement, StudentSemesterSignIn, TranscriptTemplate, ReportTemplate, ReportTemplate
+from .models import College, Student, CollegeCourse, CollegeUnit, CustomUser, Enrollment, Result, CollegeCourseUnit, GlobalUnit, GlobalCourse, CollegeTimetable, Announcement, StudentSemesterSignIn, ReportTemplate, ReportTemplateMapping
+from .utils.student_pdf_generator import (
+    get_template_for_report_type,
+    generate_student_results_pdf,
+    generate_student_registered_units_pdf,
+    generate_student_fee_structure_pdf
+)
 from .decorators import verify_college_access, get_college_from_slug, student_required
 from accounts.models import FeeStructure, Payment
 from accounts.views import calculate_expected_fees
@@ -3447,90 +3453,268 @@ def api_admin_export_students(request, college_slug):
     if not request.user.is_college_admin():
         return JsonResponse({'error': 'Only college administrators can export data'}, status=403)
     
-    # Get filter parameters
-    course_id = request.GET.get('course_id', '')
-    academic_year = request.GET.get('academic_year', '')
-    year_of_study = request.GET.get('year_of_study', '')
-    search = request.GET.get('search', '')
-    status = request.GET.get('status', '')
+    # Check if simple format is requested (only name and admission number)
+    export_format = request.GET.get('format', 'full')
+    student_ids_param = request.GET.get('student_ids', '')
     
-    # Query students
-    students = Student.objects.filter(college=college)
-    
-    if course_id:
-        students = students.filter(course_id=int(course_id))
-    
-    if academic_year:
-        # Filter students with enrollments in that academic year
-        enrollment_student_ids = Enrollment.objects.filter(
-            academic_year=academic_year,
-            student__college=college
-        ).values_list('student_id', flat=True).distinct()
-        students = students.filter(id__in=enrollment_student_ids)
-    
-    if year_of_study:
+    # If student_ids are provided, use them directly
+    if student_ids_param:
         try:
-            year_int = int(year_of_study)
-            # Filter by year_of_study field if it exists, otherwise filter by enrollments
-            if hasattr(Student, 'year_of_study'):
-                students = students.filter(year_of_study=year_int)
-            else:
-                # Fallback: filter by students with enrollments in that year
-                enrollment_student_ids = Enrollment.objects.filter(
-                    student__college=college
-                ).values_list('student_id', flat=True).distinct()
-                students = students.filter(id__in=enrollment_student_ids)
+            student_ids = [int(id) for id in student_ids_param.split(',') if id.strip()]
+            students = Student.objects.filter(id__in=student_ids, college=college).order_by('admission_number')
         except ValueError:
-            pass
-    
-    if search:
-        students = students.filter(
-            Q(full_name__icontains=search) |
-            Q(admission_number__icontains=search)
-        )
-    
-    if status == 'active':
-        students = students.filter(status='active')
-    elif status == 'graduated':
-        students = students.filter(status='graduated')
-    elif status == 'inactive':
-        # Include suspended and deferred as inactive
-        students = students.filter(status__in=['suspended', 'deferred'])
-    
-    students = students.select_related('course').distinct()
+            return JsonResponse({'error': 'Invalid student IDs format'}, status=400)
+    else:
+        # Get filter parameters
+        course_id = request.GET.get('course_id', '')
+        academic_year = request.GET.get('academic_year', '')
+        year_of_study = request.GET.get('year_of_study', '')
+        search = request.GET.get('search', '')
+        status = request.GET.get('status', '')
+        
+        # Query students
+        students = Student.objects.filter(college=college)
+        
+        if course_id:
+            students = students.filter(course_id=int(course_id))
+        
+        if academic_year:
+            # Filter students with enrollments in that academic year
+            enrollment_student_ids = Enrollment.objects.filter(
+                academic_year=academic_year,
+                student__college=college
+            ).values_list('student_id', flat=True).distinct()
+            students = students.filter(id__in=enrollment_student_ids)
+        
+        if year_of_study:
+            try:
+                year_int = int(year_of_study)
+                # Filter by year_of_study field if it exists, otherwise filter by enrollments
+                if hasattr(Student, 'year_of_study'):
+                    students = students.filter(year_of_study=year_int)
+                else:
+                    # Fallback: filter by students with enrollments in that year
+                    enrollment_student_ids = Enrollment.objects.filter(
+                        student__college=college
+                    ).values_list('student_id', flat=True).distinct()
+                    students = students.filter(id__in=enrollment_student_ids)
+            except ValueError:
+                pass
+        
+        if search:
+            students = students.filter(
+                Q(full_name__icontains=search) |
+                Q(admission_number__icontains=search)
+            )
+        
+        if status == 'active':
+            students = students.filter(status='active')
+        elif status == 'graduated':
+            students = students.filter(status='graduated')
+        elif status == 'inactive':
+            # Include suspended and deferred as inactive
+            students = students.filter(status__in=['suspended', 'deferred'])
+        
+        students = students.select_related('course').distinct()
     
     # Generate CSV
     output = StringIO()
     writer = csv.writer(output)
     
-    # Write header
-    headers = ['ID', 'Admission Number', 'Full Name', 'Email', 'Phone', 'Gender', 'Course', 'Year of Study', 'Status', 'Graduation Date', 'Created At']
-    writer.writerow(headers)
-    
-    # Write data
-    for student in students:
-        # Get year of study from student model
-        year_of_study = student.year_of_study if hasattr(student, 'year_of_study') else ''
+    # Write header based on format
+    if export_format == 'simple':
+        headers = ['Admission Number', 'Full Name']
+        writer.writerow(headers)
         
-        writer.writerow([
-            student.id,
-            student.admission_number,
-            student.full_name,
-            student.email or '',
-            student.phone or '',
-            student.get_gender_display() if hasattr(student, 'get_gender_display') else (student.gender if hasattr(student, 'gender') else ''),
-            student.course.name if student.course else '',
-            year_of_study,
-            student.get_status_display() if hasattr(student, 'get_status_display') else student.status,
-            student.graduation_date.strftime('%Y-%m-%d') if hasattr(student, 'graduation_date') and student.graduation_date else '',
-            student.created_at.strftime('%Y-%m-%d') if hasattr(student, 'created_at') and student.created_at else ''
-        ])
+        # Write data - only admission number and full name
+        for student in students:
+            writer.writerow([
+                student.admission_number,
+                student.full_name
+            ])
+    else:
+        # Full format with all fields
+        headers = ['ID', 'Admission Number', 'Full Name', 'Email', 'Phone', 'Gender', 'Course', 'Year of Study', 'Status', 'Graduation Date', 'Created At']
+        writer.writerow(headers)
+        
+        # Write data
+        for student in students:
+            # Get year of study from student model
+            year_of_study = student.year_of_study if hasattr(student, 'year_of_study') else ''
+            
+            writer.writerow([
+                student.id,
+                student.admission_number,
+                student.full_name,
+                student.email or '',
+                student.phone or '',
+                student.get_gender_display() if hasattr(student, 'get_gender_display') else (student.gender if hasattr(student, 'gender') else ''),
+                student.course.name if student.course else '',
+                year_of_study,
+                student.get_status_display() if hasattr(student, 'get_status_display') else student.status,
+                student.graduation_date.strftime('%Y-%m-%d') if hasattr(student, 'graduation_date') and student.graduation_date else '',
+                student.created_at.strftime('%Y-%m-%d') if hasattr(student, 'created_at') and student.created_at else ''
+            ])
     
     response = HttpResponse(output.getvalue(), content_type='text/csv; charset=utf-8-sig')
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"students_export_{slugify(college.name)}_{timestamp}.csv"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["GET"])
+def api_admin_export_students_pdf(request, college_slug):
+    """API endpoint for exporting student list to PDF"""
+    college = get_college_from_slug(college_slug)
+    if not college:
+        return JsonResponse({'error': 'College not found'}, status=404)
+    
+    verify_user_college_access(request, college)
+    
+    # Only college admins can export
+    if not request.user.is_college_admin():
+        return JsonResponse({'error': 'Only college administrators can export data'}, status=403)
+    
+    # Get student IDs
+    student_ids_param = request.GET.get('student_ids', '')
+    if not student_ids_param:
+        return JsonResponse({'error': 'No students selected'}, status=400)
+    
+    try:
+        student_ids = [int(id) for id in student_ids_param.split(',') if id.strip()]
+        students = Student.objects.filter(id__in=student_ids, college=college).order_by('admission_number')
+    except ValueError:
+        return JsonResponse({'error': 'Invalid student IDs format'}, status=400)
+    
+    if not students.exists():
+        return JsonResponse({'error': 'No students found'}, status=404)
+    
+    # Get report type (default to transcript)
+    report_type = request.GET.get('report_type', 'transcript')
+    
+    try:
+        # Get template for the report type
+        template = get_template_for_report_type(college, report_type)
+        
+        if not template:
+            # If no template, generate a simple table-based PDF
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.units import inch
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib import colors
+            from io import BytesIO
+            
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
+            
+            # Container for the 'Flowable' objects
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            # Title
+            title = Paragraph(f"<b>Student List - {college.name}</b>", styles['Title'])
+            elements.append(title)
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Create table data
+            data = [['Admission Number', 'Full Name']]
+            for student in students:
+                data.append([student.admission_number or '-', student.full_name or '-'])
+            
+            # Create table
+            table = Table(data, colWidths=[2*inch, 4*inch])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+            ]))
+            
+            elements.append(table)
+            
+            # Build PDF
+            doc.build(elements)
+            
+            # Get the value of the BytesIO buffer
+            pdf = buffer.getvalue()
+            buffer.close()
+            
+            # Create HTTP response
+            response = HttpResponse(pdf, content_type='application/pdf')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"student_list_{slugify(college.name)}_{timestamp}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+        else:
+            # Use template to generate PDF for each student
+            # For now, generate a simple combined PDF
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.units import inch
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib import colors
+            from io import BytesIO
+            
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
+            
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            # Title
+            title = Paragraph(f"<b>Student List - {college.name}</b>", styles['Title'])
+            elements.append(title)
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Create table data
+            data = [['Admission Number', 'Full Name']]
+            for student in students:
+                data.append([student.admission_number or '-', student.full_name or '-'])
+            
+            # Create table
+            table = Table(data, colWidths=[2*inch, 4*inch])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+            ]))
+            
+            elements.append(table)
+            doc.build(elements)
+            
+            pdf = buffer.getvalue()
+            buffer.close()
+            
+            response = HttpResponse(pdf, content_type='application/pdf')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"student_list_{slugify(college.name)}_{timestamp}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+            
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error generating student list PDF: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'error': f'Error generating PDF: {str(e)}'
+        }, status=500)
 
 
 @login_required
@@ -6165,276 +6349,141 @@ def api_admin_nominal_roll_stats(request, college_slug):
 
 @login_required
 @csrf_exempt
-@require_http_methods(["GET", "POST", "PUT", "DELETE"])
-def api_transcript_template(request, college_slug):
-    """API endpoint for transcript template management"""
+@require_http_methods(["GET", "PUT"])
+def api_report_template_mapping(request, college_slug):
+    """API endpoint for managing report template mappings"""
     college = get_college_from_slug(college_slug)
     if not college:
         return JsonResponse({'error': 'College not found'}, status=404)
     
     verify_user_college_access(request, college)
     
-    # Only college admins can manage templates
+    # Only college admins can manage mappings
     if not request.user.is_college_admin():
-        return JsonResponse({'error': 'Only college administrators can manage transcript templates'}, status=403)
+        return JsonResponse({'error': 'Only college administrators can manage report template mappings'}, status=403)
     
     if request.method == 'GET':
-        # Get active template or all templates
-        template = TranscriptTemplate.objects.filter(college=college, is_active=True).first()
-        if not template:
-            return JsonResponse({
-                'template': None,
-                'message': 'No active template found'
-            })
+        # Get or create mapping
+        mapping, created = ReportTemplateMapping.objects.get_or_create(college=college)
         
-        # Get absolute URL for template file
-        template_url = None
-        if template.template_file:
-            # Check if file actually exists
-            import os
-            from django.conf import settings
-            try:
-                file_path = template.template_file.path
-                if not os.path.exists(file_path):
-                    return JsonResponse({
-                        'error': f'Template file not found on server: {file_path}',
-                        'template': None
-                    }, status=404)
-            except ValueError as e:
-                # FileField.path might raise ValueError if file doesn't exist
-                return JsonResponse({
-                    'error': f'Template file path error: {str(e)}',
-                    'template': None
-                }, status=404)
-            
-            # Get the URL - Django's .url gives relative path, we need to make it absolute
-            relative_url = template.template_file.url
-            # If it doesn't start with http, make it absolute using request
-            if not relative_url.startswith('http'):
-                # Construct absolute URL
-                if hasattr(request, 'build_absolute_uri'):
-                    template_url = request.build_absolute_uri(relative_url)
-                else:
-                    # Fallback: construct manually
-                    scheme = 'https' if request.is_secure() else 'http'
-                    host = request.get_host()
-                    template_url = f"{scheme}://{host}{relative_url}"
-            else:
-                template_url = relative_url
-        
-        # For PDF templates, provide direct PDF URL (no image conversion)
-        preview_image_url = None  # Deprecated - PDF templates are used directly now
+        # Get all available templates for dropdowns
+        templates = ReportTemplate.objects.filter(college=college, is_active=True).order_by('name')
+        templates_data = [{
+            'id': t.id,
+            'name': t.name,
+            'report_type': t.report_type
+        } for t in templates]
         
         return JsonResponse({
-            'template': {
-                'id': template.id,
-                'name': template.name,
-                'template_type': template.template_type,
-                'template_url': template_url,
-                'preview_image_url': preview_image_url,  # Kept for backward compatibility
-                'margin_top': getattr(template, 'margin_top', 72.0),
-                'margin_bottom': getattr(template, 'margin_bottom', 72.0),
-                'margin_left': getattr(template, 'margin_left', 72.0),
-                'margin_right': getattr(template, 'margin_right', 72.0),  # For PDF templates
-                'field_positions': template.field_positions,
-                'is_active': template.is_active,
-                'uploaded_at': template.uploaded_at.isoformat(),
-                'uploaded_by': template.uploaded_by.username if template.uploaded_by else None
+            'mapping': {
+                'transcript_template_id': mapping.transcript_template.id if mapping.transcript_template else None,
+                'fee_structure_template_id': mapping.fee_structure_template.id if mapping.fee_structure_template else None,
+                'exam_card_template_id': mapping.exam_card_template.id if mapping.exam_card_template else None,
             },
-            'template_id': template.id
+            'templates': templates_data
         })
-    
-    elif request.method == 'POST':
-        # Upload new template
-        if 'template_file' not in request.FILES:
-            return JsonResponse({'error': 'Template file is required'}, status=400)
-        
-        template_file = request.FILES['template_file']
-        name = request.POST.get('name', 'Default Transcript Template')
-        template_type = request.POST.get('template_type', 'pdf')
-        
-        # Determine template type from file extension if not provided
-        if template_type == 'pdf' and not template_file.name.lower().endswith('.pdf'):
-            if template_file.name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                template_type = 'image'
-        
-        # Deactivate existing active template
-        TranscriptTemplate.objects.filter(college=college, is_active=True).update(is_active=False)
-        
-        # Create new template
-        template = TranscriptTemplate.objects.create(
-            college=college,
-            name=name,
-            template_file=template_file,
-            template_type=template_type,
-            is_active=True,
-            uploaded_by=request.user,
-            field_positions={}
-        )
-        
-        # Get absolute URL for template file
-        relative_url = template.template_file.url
-        if not relative_url.startswith('http'):
-            from django.conf import settings
-            scheme = 'https' if request.is_secure() else 'http'
-            host = request.get_host()
-            template_url = f"{scheme}://{host}{relative_url}"
-        else:
-            template_url = relative_url
-        
-        return JsonResponse({
-            'success': True,
-            'message': 'Template uploaded successfully',
-            'template': {
-                'id': template.id,
-                'name': template.name,
-                'template_type': template.template_type,
-                'template_url': template_url,
-                'field_positions': template.field_positions
-            },
-            'template_id': template.id
-        }, status=201)
     
     elif request.method == 'PUT':
-        # Update template (field positions, name, or activate/deactivate)
+        # Update mapping
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
-        template_id = data.get('template_id')
         
-        if not template_id:
-            return JsonResponse({'error': 'Template ID is required'}, status=400)
+        # Get or create mapping
+        mapping, created = ReportTemplateMapping.objects.get_or_create(college=college)
         
-        try:
-            template = TranscriptTemplate.objects.get(pk=template_id, college=college)
-        except TranscriptTemplate.DoesNotExist:
-            return JsonResponse({'error': 'Template not found'}, status=404)
+        # Update template assignments
+        if 'transcript_template_id' in data:
+            template_id = data['transcript_template_id']
+            if template_id:
+                try:
+                    template = ReportTemplate.objects.get(pk=template_id, college=college)
+                    mapping.transcript_template = template
+                except ReportTemplate.DoesNotExist:
+                    return JsonResponse({'error': 'Transcript template not found'}, status=404)
+            else:
+                mapping.transcript_template = None
         
-        # Update fields
-        if 'name' in data:
-            template.name = data['name']
-        if 'field_positions' in data:
-            template.field_positions = data['field_positions']
-        if 'is_active' in data:
-            if data['is_active']:
-                # Deactivate other templates
-                TranscriptTemplate.objects.filter(college=college, is_active=True).exclude(pk=template.id).update(is_active=False)
-            template.is_active = data['is_active']
+        if 'fee_structure_template_id' in data:
+            template_id = data['fee_structure_template_id']
+            if template_id:
+                try:
+                    template = ReportTemplate.objects.get(pk=template_id, college=college)
+                    mapping.fee_structure_template = template
+                except ReportTemplate.DoesNotExist:
+                    return JsonResponse({'error': 'Fee structure template not found'}, status=404)
+            else:
+                mapping.fee_structure_template = None
         
-        template.save()
+        if 'exam_card_template_id' in data:
+            template_id = data['exam_card_template_id']
+            if template_id:
+                try:
+                    template = ReportTemplate.objects.get(pk=template_id, college=college)
+                    mapping.exam_card_template = template
+                except ReportTemplate.DoesNotExist:
+                    return JsonResponse({'error': 'Exam card template not found'}, status=404)
+            else:
+                mapping.exam_card_template = None
+        
+        mapping.updated_by = request.user
+        mapping.save()
         
         return JsonResponse({
             'success': True,
-            'message': 'Template updated successfully',
-            'template': {
-                'id': template.id,
-                'name': template.name,
-                'field_positions': template.field_positions,
-                'is_active': template.is_active
+            'message': 'Report template mappings updated successfully',
+            'mapping': {
+                'transcript_template_id': mapping.transcript_template.id if mapping.transcript_template else None,
+                'fee_structure_template_id': mapping.fee_structure_template.id if mapping.fee_structure_template else None,
+                'exam_card_template_id': mapping.exam_card_template.id if mapping.exam_card_template else None,
             }
         })
-    
-    elif request.method == 'DELETE':
-        # Delete template
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({'error': 'Invalid JSON'}, status=400)
-        template_id = data.get('template_id')
-        
-        if not template_id:
-            return JsonResponse({'error': 'Template ID is required'}, status=400)
-        
-        try:
-            template = TranscriptTemplate.objects.get(pk=template_id, college=college)
-            template.delete()
-            return JsonResponse({'success': True, 'message': 'Template deleted successfully'}, status=200)
-        except TranscriptTemplate.DoesNotExist:
-            return JsonResponse({'error': 'Template not found'}, status=404)
 
 
-@login_required
+# Removed: api_transcript_template - TranscriptTemplate has been removed
+# Removed: api_generate_transcript - Use student download endpoints instead
+
+
 @csrf_exempt
-@require_http_methods(["POST"])
-def api_generate_transcript(request, college_slug):
-    """API endpoint to generate transcript for student(s)"""
-    college = get_college_from_slug(college_slug)
-    if not college:
-        return JsonResponse({'error': 'College not found'}, status=404)
-    
-    verify_user_college_access(request, college)
-    
-    # Only college admins can generate transcripts
-    if not request.user.is_college_admin():
-        return JsonResponse({'error': 'Only college administrators can generate transcripts'}, status=403)
+@require_http_methods(["GET"])
+def api_student_download_transcript_pdf(request, college_slug):
+    """API endpoint for student to download their transcript PDF"""
+    error_response, student, college = verify_student_access(request, college_slug)
+    if error_response:
+        return error_response
     
     try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON'}, status=400)
-    
-    student_ids = data.get('student_ids', [])
-    academic_year = data.get('academic_year', '')
-    semester = data.get('semester', '')
-    is_preview = data.get('preview', False)
-    
-    if not student_ids:
-        return JsonResponse({'error': 'At least one student ID is required'}, status=400)
-    
-    # Get active template
-    template = TranscriptTemplate.objects.filter(college=college, is_active=True).first()
-    if not template:
-        return JsonResponse({'error': 'No active transcript template found. Please upload a template first.'}, status=400)
-    
-    # Import transcript generation function
-    from .utils.transcript_generator import generate_transcript_pdf, generate_bulk_transcripts, generate_preview_transcript
-    
-    try:
-        # Generate transcript(s)
-        if len(student_ids) == 1:
-            # Check if preview mode
-            if is_preview or student_ids[0] == 0:
-                # Generate preview with sample data
-                pdf_path = generate_preview_transcript(template, college)
-                
-                return JsonResponse({
-                    'success': True,
-                    'message': 'Preview transcript generated successfully',
-                    'download_url': pdf_path,
-                    'preview': True
-                })
-            
-            # Single transcript
-            student = Student.objects.get(pk=student_ids[0], college=college)
-            pdf_path = generate_transcript_pdf(student, template, academic_year, semester)
-            
+        # Get academic year and semester filters
+        academic_year = request.GET.get('academic_year', None)
+        semester = request.GET.get('semester', None)
+        if semester:
+            semester = int(semester)
+        
+        # Get template for transcript
+        from .utils.student_pdf_generator import get_template_for_report_type, generate_student_results_pdf
+        template = get_template_for_report_type(college, 'transcript')
+        if not template:
             return JsonResponse({
-                'success': True,
-                'message': 'Transcript generated successfully',
-                'download_url': pdf_path,
-                'student_id': student.id,
-                'student_name': student.full_name
-            })
-        else:
-            # Bulk generation - create ZIP file
-            zip_path = generate_bulk_transcripts(student_ids, college, template, academic_year, semester)
-            
-            return JsonResponse({
-                'success': True,
-                'message': f'Transcripts generated successfully for {len(student_ids)} students',
-                'download_url': zip_path,
-                'count': len(student_ids)
-            })
-    except Student.DoesNotExist:
-        return JsonResponse({'error': 'Student not found'}, status=404)
+                'error': 'No report template configured for Transcript. Please configure a template in Academic Configuration → Reports.'
+            }, status=404)
+        
+        # Generate PDF (transcript uses same data as results but with all academic periods)
+        pdf_buffer = generate_student_results_pdf(student, template, academic_year, semester)
+        
+        # Create HTTP response
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        filename = f"transcript_{student.admission_number}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
     except Exception as e:
-        import traceback
-        error_details = str(e)
-        # Log full traceback for debugging (in production, use proper logging)
-        print(f"Transcript generation error: {error_details}")
-        print(traceback.format_exc())
-        return JsonResponse({'error': f'Error generating transcript: {error_details}'}, status=500)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error generating transcript PDF: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'error': f'Error generating PDF: {str(e)}'
+        }, status=500)
 
 
 # ============================================
@@ -6665,89 +6714,157 @@ def api_admin_logout(request):
 @require_http_methods(["GET", "POST"])
 def api_report_templates_list(request, college_slug):
     """API endpoint for listing and creating report templates"""
-    college = get_college_from_slug(college_slug)
-    if not college:
-        return JsonResponse({'error': 'College not found'}, status=404)
-    
-    verify_user_college_access(request, college)
-    
-    if request.method == 'GET':
-        # Check permissions: all users can view, but only principal/registrar can edit
-        can_edit = request.user.is_principal() or request.user.is_registrar()
+    try:
+        college = get_college_from_slug(college_slug)
+        if not college:
+            return JsonResponse({'error': 'College not found'}, status=404)
         
-        templates = ReportTemplate.objects.filter(college=college).order_by('-created_at')
+        verify_user_college_access(request, college)
         
-        templates_data = []
-        for template in templates:
-            templates_data.append({
-                'id': template.id,
-                'name': template.name,
-                'report_type': template.report_type,
-                'description': template.description,
-                'canvas_width': template.canvas_width,
-                'canvas_height': template.canvas_height,
-                'elements': template.elements,
-                'is_active': template.is_active,
-                'created_by': template.created_by.get_full_name() if template.created_by else 'Unknown',
-                'created_at': template.created_at.isoformat(),
-                'updated_at': template.updated_at.isoformat(),
-            })
+        if request.method == 'GET':
+            try:
+                # Check permissions: all users can view, but only principal/registrar can edit
+                can_edit = request.user.is_principal() or request.user.is_registrar()
+                
+                # Query templates with error handling
+                try:
+                    templates = ReportTemplate.objects.filter(college=college).order_by('-created_at')
+                except Exception as query_error:
+                    # If query fails (e.g., table doesn't exist), return empty list
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f'Error querying ReportTemplate: {str(query_error)}')
+                    return JsonResponse({
+                        'templates': [],
+                        'can_edit': can_edit,
+                        'warning': 'Templates table may not be initialized. Please run migrations.'
+                    })
+                
+                templates_data = []
+                for template in templates:
+                    try:
+                        # Handle page_size field - default to A4 if not set (for backward compatibility)
+                        # Use getattr to safely access the field in case migration hasn't been fully applied
+                        try:
+                            page_size = getattr(template, 'page_size', 'A4')
+                            # If page_size is None or empty, default to A4
+                            if not page_size:
+                                page_size = 'A4'
+                        except (AttributeError, ValueError, TypeError):
+                            page_size = 'A4'
+                        
+                        templates_data.append({
+                            'id': template.id,
+                            'name': template.name,
+                            'report_type': template.report_type,
+                            'description': template.description or '',
+                            'page_size': page_size,
+                            'canvas_width': template.canvas_width,
+                            'canvas_height': template.canvas_height,
+                            'elements': template.elements or [],
+                            'is_active': template.is_active,
+                            'created_by': template.created_by.get_full_name() if template.created_by else 'Unknown',
+                            'created_at': template.created_at.isoformat() if template.created_at else None,
+                            'updated_at': template.updated_at.isoformat() if template.updated_at else None,
+                        })
+                    except Exception as e:
+                        # Log error but continue with other templates
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f'Error processing template {template.id if hasattr(template, "id") else "unknown"}: {str(e)}')
+                        continue
+                
+                return JsonResponse({
+                    'templates': templates_data,
+                    'can_edit': can_edit
+                })
+            except Exception as e:
+                import traceback
+                return JsonResponse({
+                    'error': f'Error loading templates: {str(e)}',
+                    'traceback': traceback.format_exc()
+                }, status=500)
         
-        return JsonResponse({
-            'templates': templates_data,
-            'can_edit': can_edit
-        })
-    
-    elif request.method == 'POST':
-        # Only principal and registrar can create/edit templates
-        if not (request.user.is_principal() or request.user.is_registrar()):
-            return JsonResponse({'error': 'Only Principal and Registrar can create report templates'}, status=403)
-        
-        try:
-            data = json.loads(request.body)
-            name = data.get('name', '').strip()
-            report_type = data.get('report_type', 'custom')
-            description = data.get('description', '').strip()
-            canvas_width = int(data.get('canvas_width', 800))
-            canvas_height = int(data.get('canvas_height', 1000))
-            elements = data.get('elements', [])
-            is_active = data.get('is_active', True)
-            
-            if not name:
-                return JsonResponse({'error': 'Template name is required'}, status=400)
-            
-            template = ReportTemplate.objects.create(
-                college=college,
-                name=name,
-                report_type=report_type,
-                description=description,
-                canvas_width=canvas_width,
-                canvas_height=canvas_height,
-                elements=elements,
-                is_active=is_active,
-                created_by=request.user
-            )
-            
-            return JsonResponse({
-                'success': True,
-                'message': 'Report template created successfully',
-                'template': {
-                    'id': template.id,
-                    'name': template.name,
-                    'report_type': template.report_type,
-                    'description': template.description,
-                    'canvas_width': template.canvas_width,
-                    'canvas_height': template.canvas_height,
-                    'elements': template.elements,
-                    'is_active': template.is_active,
-                    'created_at': template.created_at.isoformat(),
-                    'updated_at': template.updated_at.isoformat(),
+        elif request.method == 'POST':
+            try:
+                # Only principal and registrar can create/edit templates
+                if not (request.user.is_principal() or request.user.is_registrar()):
+                    return JsonResponse({'error': 'Only Principal and Registrar can create report templates'}, status=403)
+                
+                data = json.loads(request.body)
+                name = data.get('name', '').strip()
+                report_type = data.get('report_type', 'custom')
+                description = data.get('description', '').strip()
+                page_size = data.get('page_size', 'A4')
+                elements = data.get('elements', [])
+                is_active = data.get('is_active', True)
+                
+                # Validate page size
+                valid_page_sizes = ['A4', 'A3', 'A5', 'Letter']
+                if page_size not in valid_page_sizes:
+                    page_size = 'A4'
+                
+                # Get dimensions for selected page size
+                # PAGE_DIMENSIONS is a class attribute, access it directly
+                PAGE_DIMENSIONS = {
+                    'A4': (794, 1123),
+                    'A3': (1123, 1587),
+                    'A5': (559, 794),
+                    'Letter': (816, 1056)
                 }
-            }, status=201)
-        except json.JSONDecodeError:
-            return JsonResponse({'error': 'Invalid JSON data'}, status=400)
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=400)
+                width, height = PAGE_DIMENSIONS.get(page_size, PAGE_DIMENSIONS['A4'])
+                
+                # Use provided canvas dimensions if specified, otherwise use page size dimensions
+                canvas_width = int(data.get('canvas_width', width))
+                canvas_height = int(data.get('canvas_height', height))
+                
+                if not name:
+                    return JsonResponse({'error': 'Template name is required'}, status=400)
+                
+                template = ReportTemplate.objects.create(
+                    college=college,
+                    name=name,
+                    report_type=report_type,
+                    description=description,
+                    page_size=page_size,
+                    canvas_width=canvas_width,
+                    canvas_height=canvas_height,
+                    elements=elements,
+                    is_active=is_active,
+                    created_by=request.user
+                )
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Report template created successfully',
+                    'template': {
+                        'id': template.id,
+                        'name': template.name,
+                        'report_type': template.report_type,
+                        'description': template.description,
+                        'page_size': template.page_size,
+                        'canvas_width': template.canvas_width,
+                        'canvas_height': template.canvas_height,
+                        'elements': template.elements,
+                        'is_active': template.is_active,
+                        'created_at': template.created_at.isoformat(),
+                        'updated_at': template.updated_at.isoformat(),
+                    }
+                }, status=201)
+            except json.JSONDecodeError:
+                return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+            except Exception as e:
+                import traceback
+                return JsonResponse({
+                    'error': f'Error creating template: {str(e)}',
+                    'traceback': traceback.format_exc()
+                }, status=500)
+    except Exception as e:
+        import traceback
+        return JsonResponse({
+            'error': f'Unexpected error: {str(e)}',
+            'traceback': traceback.format_exc()
+        }, status=500)
 
 
 @login_required
@@ -6770,11 +6887,18 @@ def api_report_template_detail(request, college_slug, template_id):
         # All users can view
         can_edit = request.user.is_principal() or request.user.is_registrar()
         
+        # Handle page_size field - default to A4 if not set (for backward compatibility)
+        try:
+            page_size = getattr(template, 'page_size', 'A4')
+        except (AttributeError, ValueError):
+            page_size = 'A4'
+        
         return JsonResponse({
             'id': template.id,
             'name': template.name,
             'report_type': template.report_type,
             'description': template.description,
+            'page_size': page_size,
             'canvas_width': template.canvas_width,
             'canvas_height': template.canvas_height,
             'elements': template.elements,
@@ -6800,6 +6924,23 @@ def api_report_template_detail(request, college_slug, template_id):
                 template.report_type = data['report_type']
             if 'description' in data:
                 template.description = data['description'].strip()
+            if 'page_size' in data:
+                # Validate page size
+                valid_page_sizes = ['A4', 'A3', 'A5', 'Letter']
+                page_size = data['page_size']
+                if page_size in valid_page_sizes:
+                    template.page_size = page_size
+                    # Update canvas dimensions to match page size if not explicitly provided
+                    if 'canvas_width' not in data and 'canvas_height' not in data:
+                        PAGE_DIMENSIONS = {
+                            'A4': (794, 1123),
+                            'A3': (1123, 1587),
+                            'A5': (559, 794),
+                            'Letter': (816, 1056)
+                        }
+                        width, height = PAGE_DIMENSIONS.get(page_size, PAGE_DIMENSIONS['A4'])
+                        template.canvas_width = width
+                        template.canvas_height = height
             if 'canvas_width' in data:
                 template.canvas_width = int(data['canvas_width'])
             if 'canvas_height' in data:
@@ -6811,6 +6952,12 @@ def api_report_template_detail(request, college_slug, template_id):
             
             template.save()
             
+            # Get page_size safely
+            try:
+                page_size = template.page_size if hasattr(template, 'page_size') else 'A4'
+            except (AttributeError, ValueError):
+                page_size = 'A4'
+            
             return JsonResponse({
                 'success': True,
                 'message': 'Report template updated successfully',
@@ -6819,6 +6966,7 @@ def api_report_template_detail(request, college_slug, template_id):
                     'name': template.name,
                     'report_type': template.report_type,
                     'description': template.description,
+                    'page_size': page_size,
                     'canvas_width': template.canvas_width,
                     'canvas_height': template.canvas_height,
                     'elements': template.elements,
@@ -6841,3 +6989,120 @@ def api_report_template_detail(request, college_slug, template_id):
             'success': True,
             'message': 'Report template deleted successfully'
         })
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def api_student_download_results_pdf(request, college_slug):
+    """API endpoint for student to download their results PDF"""
+    error_response, student, college = verify_student_access(request, college_slug)
+    if error_response:
+        return error_response
+    
+    try:
+        # Get academic year and semester filters
+        academic_year = request.GET.get('academic_year', None)
+        semester = request.GET.get('semester', None)
+        if semester:
+            semester = int(semester)
+        
+        # Get template for exam card (results are shown on exam card)
+        from .utils.student_pdf_generator import get_template_for_report_type
+        template = get_template_for_report_type(college, 'exam_card')
+        if not template:
+            return JsonResponse({
+                'error': 'No report template configured for Exam Card. Please configure a template in Academic Configuration → Reports.'
+            }, status=404)
+        
+        # Generate PDF
+        pdf_buffer = generate_student_results_pdf(student, template, academic_year, semester)
+        
+        # Create HTTP response
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        filename = f"results_{student.admission_number}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error generating results PDF: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'error': f'Error generating PDF: {str(e)}'
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def api_student_download_registered_units_pdf(request, college_slug):
+    """API endpoint for student to download their registered units (Exam Card) PDF"""
+    error_response, student, college = verify_student_access(request, college_slug)
+    if error_response:
+        return error_response
+    
+    try:
+        # Get academic year and semester filters
+        academic_year = request.GET.get('academic_year', None)
+        semester = request.GET.get('semester', None)
+        if semester:
+            semester = int(semester)
+        
+        # Get template for registered units (exam card)
+        from .utils.student_pdf_generator import get_template_for_report_type
+        template = get_template_for_report_type(college, 'exam_card')
+        if not template:
+            return JsonResponse({
+                'error': 'No report template configured for Exam Card. Please configure a template in Academic Configuration → Reports.'
+            }, status=404)
+        
+        # Generate PDF
+        pdf_buffer = generate_student_registered_units_pdf(student, template, academic_year, semester)
+        
+        # Create HTTP response
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        filename = f"exam_card_{student.admission_number}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error generating registered units PDF: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'error': f'Error generating PDF: {str(e)}'
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def api_student_download_fee_structure_pdf(request, college_slug):
+    """API endpoint for student to download their fee structure PDF"""
+    error_response, student, college = verify_student_access(request, college_slug)
+    if error_response:
+        return error_response
+    
+    try:
+        # Get template for registered units (exam card)
+        from .utils.student_pdf_generator import get_template_for_report_type
+        template = get_template_for_report_type(college, 'exam_card')
+        if not template:
+            return JsonResponse({
+                'error': 'No report template configured for Exam Card. Please configure a template in Academic Configuration → Reports.'
+            }, status=404)
+        
+        # Generate PDF
+        pdf_buffer = generate_student_fee_structure_pdf(student, template)
+        
+        # Create HTTP response
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        filename = f"fee_structure_{student.admission_number}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error generating fee structure PDF: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'error': f'Error generating PDF: {str(e)}'
+        }, status=500)

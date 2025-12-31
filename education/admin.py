@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from .models import (
     College, CustomUser, GlobalCourse, GlobalUnit, GlobalCourseUnit,
     CollegeCourse, CollegeUnit, CollegeCourseUnit, Student, Enrollment, Result,
-    SchoolRegistration, Announcement, StudentSemesterSignIn, TranscriptTemplate
+    SchoolRegistration, Announcement, StudentSemesterSignIn
 )
 
 
@@ -194,10 +194,4 @@ class StudentSemesterSignInAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(TranscriptTemplate)
-class TranscriptTemplateAdmin(admin.ModelAdmin):
-    list_display = ['name', 'college', 'template_type', 'is_active', 'uploaded_by', 'uploaded_at']
-    list_filter = ['college', 'template_type', 'is_active', 'uploaded_at']
-    search_fields = ['name', 'college__name']
-    raw_id_fields = ['college', 'uploaded_by']
-    readonly_fields = ['uploaded_at', 'updated_at']
+# TranscriptTemplate admin removed - reports now use ReportTemplate with mappings

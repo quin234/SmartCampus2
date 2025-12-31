@@ -1475,6 +1475,48 @@
             </div>
             {% endif %}
 
+            <!-- Downloads Section -->
+            <div class="content-card" style="margin-top: 24px;">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="fas fa-download"></i> Downloads</h3>
+                </div>
+                <div class="card-body">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+                        <button class="download-btn" onclick="downloadResultsPDF()" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); color: white; border: none; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-size: 14px; font-weight: 600;">
+                            <i class="fas fa-file-pdf" style="font-size: 24px;"></i>
+                            <div style="text-align: left;">
+                                <div style="font-weight: 600;">Download Results (PDF)</div>
+                                <div style="font-size: 12px; opacity: 0.9;">Get your academic results</div>
+                            </div>
+                        </button>
+                        
+                        <button class="download-btn" onclick="downloadRegisteredUnitsPDF()" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-size: 14px; font-weight: 600;">
+                            <i class="fas fa-file-pdf" style="font-size: 24px;"></i>
+                            <div style="text-align: left;">
+                                <div style="font-weight: 600;">Download Exam Card (PDF)</div>
+                                <div style="font-size: 12px; opacity: 0.9;">Registered units for exams</div>
+                            </div>
+                        </button>
+                        
+                        <button class="download-btn" onclick="downloadFeeStructurePDF()" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border: none; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-size: 14px; font-weight: 600;">
+                            <i class="fas fa-file-pdf" style="font-size: 24px;"></i>
+                            <div style="text-align: left;">
+                                <div style="font-weight: 600;">Download Fee Structure (PDF)</div>
+                                <div style="font-size: 12px; opacity: 0.9;">View your fee breakdown</div>
+                            </div>
+                        </button>
+                        
+                        <button class="download-btn" onclick="downloadTranscriptPDF()" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: white; border: none; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-size: 14px; font-weight: 600;">
+                            <i class="fas fa-file-pdf" style="font-size: 24px;"></i>
+                            <div style="text-align: left;">
+                                <div style="font-weight: 600;">Download Transcript (PDF)</div>
+                                <div style="font-size: 12px; opacity: 0.9;">Complete academic transcript</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div class="content-card">
                 <div class="card-header">
                     <h3 class="card-title">Recent Results</h3>
@@ -2518,6 +2560,281 @@
                 }
             } catch (error) {
                 console.error('Error loading results:', error);
+            }
+        }
+
+        // Download PDF functions
+        async function downloadTranscriptPDF() {
+            try {
+                // Get current filters from results section if available
+                const year = document.getElementById('results-year-filter')?.value || '';
+                const semester = document.getElementById('results-semester-filter')?.value || '';
+                
+                const params = new URLSearchParams();
+                if (year) params.append('academic_year', year);
+                if (semester) params.append('semester', semester);
+                
+                const url = `/api/${window.COLLEGE_SLUG}/student/download/transcript-pdf${params.toString() ? '?' + params.toString() : ''}`;
+                
+                // Show loading state
+                const btn = document.querySelector('.download-btn[onclick="downloadTranscriptPDF()"]');
+                const originalContent = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating PDF...';
+                btn.disabled = true;
+                
+                // Download PDF
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'X-CSRFToken': window.csrftoken
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to generate PDF');
+                }
+                
+                // Get PDF blob
+                const blob = await response.blob();
+                const url_blob = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url_blob;
+                a.download = `transcript_${new Date().getTime()}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url_blob);
+                
+                // Restore button
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+                
+                if (typeof showToast === 'function') {
+                    showToast('success', 'Transcript PDF downloaded successfully');
+                } else {
+                    alert('Transcript PDF downloaded successfully');
+                }
+            } catch (error) {
+                console.error('Error downloading transcript PDF:', error);
+                const errorMsg = error.message || 'Failed to download Transcript PDF';
+                if (typeof showToast === 'function') {
+                    showToast('error', errorMsg);
+                } else {
+                    alert('Error: ' + errorMsg);
+                }
+                
+                // Restore button
+                const btn = document.querySelector('.download-btn[onclick="downloadTranscriptPDF()"]');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = btn.innerHTML.replace('<i class="fas fa-spinner fa-spin"></i> Generating PDF...', 
+                        '<i class="fas fa-file-pdf" style="font-size: 24px;"></i><div style="text-align: left;"><div style="font-weight: 600;">Download Transcript (PDF)</div><div style="font-size: 12px; opacity: 0.9;">Complete academic transcript</div></div>');
+                }
+            }
+        }
+        
+        async function downloadResultsPDF() {
+            // Get button and store original content outside try block
+            const btn = document.querySelector('.download-btn[onclick="downloadResultsPDF()"]');
+            const originalContent = btn ? btn.innerHTML : '';
+            
+            try {
+                // Get current filters from results section if available
+                const year = document.getElementById('results-year-filter')?.value || '';
+                const semester = document.getElementById('results-semester-filter')?.value || '';
+                
+                const params = new URLSearchParams();
+                if (year) params.append('academic_year', year);
+                if (semester) params.append('semester', semester);
+                
+                const url = `/api/${window.COLLEGE_SLUG}/student/download/results-pdf${params.toString() ? '?' + params.toString() : ''}`;
+                
+                // Show loading state
+                if (btn) {
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating PDF...';
+                    btn.disabled = true;
+                }
+                
+                // Download PDF
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'X-CSRFToken': window.csrftoken
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to generate PDF');
+                }
+                
+                // Get PDF blob
+                const blob = await response.blob();
+                const url_blob = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url_blob;
+                a.download = `results_${new Date().getTime()}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url_blob);
+                
+                // Restore button
+                if (btn) {
+                    btn.innerHTML = originalContent;
+                    btn.disabled = false;
+                }
+                
+                if (typeof showToast === 'function') {
+                    showToast('success', 'Results PDF downloaded successfully');
+                } else {
+                    alert('Results PDF downloaded successfully');
+                }
+            } catch (error) {
+                console.error('Error downloading results PDF:', error);
+                const errorMsg = error.message || 'Failed to download Results PDF';
+                if (typeof showToast === 'function') {
+                    showToast('error', errorMsg);
+                } else {
+                    alert('Error: ' + errorMsg);
+                }
+                
+                // Restore button
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalContent;
+                }
+            }
+        }
+        
+        async function downloadRegisteredUnitsPDF() {
+            try {
+                // Get current filters if available
+                const year = document.getElementById('results-year-filter')?.value || '';
+                const semester = document.getElementById('results-semester-filter')?.value || '';
+                
+                const params = new URLSearchParams();
+                if (year) params.append('academic_year', year);
+                if (semester) params.append('semester', semester);
+                
+                const url = `/api/${window.COLLEGE_SLUG}/student/download/registered-units-pdf${params.toString() ? '?' + params.toString() : ''}`;
+                
+                // Show loading state
+                const btn = document.querySelector('.download-btn[onclick="downloadRegisteredUnitsPDF()"]');
+                const originalContent = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating PDF...';
+                btn.disabled = true;
+                
+                // Download PDF
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'X-CSRFToken': window.csrftoken
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to generate PDF');
+                }
+                
+                // Get PDF blob
+                const blob = await response.blob();
+                const url_blob = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url_blob;
+                a.download = `exam_card_${new Date().getTime()}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url_blob);
+                
+                // Restore button
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+                
+                if (typeof showToast === 'function') {
+                    showToast('success', 'Exam Card PDF downloaded successfully');
+                } else {
+                    alert('Exam Card PDF downloaded successfully');
+                }
+            } catch (error) {
+                console.error('Error downloading registered units PDF:', error);
+                const errorMsg = error.message || 'Failed to download Exam Card PDF';
+                if (typeof showToast === 'function') {
+                    showToast('error', errorMsg);
+                } else {
+                    alert('Error: ' + errorMsg);
+                }
+                
+                // Restore button
+                const btn = document.querySelector('.download-btn[onclick="downloadRegisteredUnitsPDF()"]');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalContent;
+                }
+            }
+        }
+        
+        async function downloadFeeStructurePDF() {
+            try {
+                const url = `/api/${window.COLLEGE_SLUG}/student/download/fee-structure-pdf/`;
+                
+                // Show loading state
+                const btn = document.querySelector('.download-btn[onclick="downloadFeeStructurePDF()"]');
+                const originalContent = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating PDF...';
+                btn.disabled = true;
+                
+                // Download PDF
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'X-CSRFToken': window.csrftoken
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to generate PDF');
+                }
+                
+                // Get PDF blob
+                const blob = await response.blob();
+                const url_blob = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url_blob;
+                a.download = `fee_structure_${new Date().getTime()}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url_blob);
+                
+                // Restore button
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+                
+                if (typeof showToast === 'function') {
+                    showToast('success', 'Fee Structure PDF downloaded successfully');
+                } else {
+                    alert('Fee Structure PDF downloaded successfully');
+                }
+            } catch (error) {
+                console.error('Error downloading fee structure PDF:', error);
+                const errorMsg = error.message || 'Failed to download Fee Structure PDF';
+                if (typeof showToast === 'function') {
+                    showToast('error', errorMsg);
+                } else {
+                    alert('Error: ' + errorMsg);
+                }
+                
+                // Restore button
+                const btn = document.querySelector('.download-btn[onclick="downloadFeeStructurePDF()"]');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalContent;
+                }
             }
         }
 

@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('education', '0013_transcripttemplate'),
+        ('education', '0012_remove_academic_year_choices'),
     ]
 
     operations = [

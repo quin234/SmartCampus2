@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('education', '0013_transcripttemplate'),
+        ('education', '0012_remove_academic_year_choices'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
