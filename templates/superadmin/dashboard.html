@@ -76,6 +76,18 @@
                         <span>Academic</span>
                     </a>
                 </li>
+                <li class="nav-item" data-page="payments">
+                    <a href="{% url 'superadmin:payments' %}" class="nav-link">
+                        <i class="fas fa-credit-card"></i>
+                        <span>Payments</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="finance">
+                    <a href="{% url 'superadmin:payments' %}" class="nav-link" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; margin: 8px 0; font-weight: 600;" onclick="window.location.href=this.getAttribute('href'); return false;">
+                        <i class="fas fa-wallet"></i>
+                        <span>Finance</span>
+                    </a>
+                </li>
                 <li class="nav-item" data-page="analytics">
                     <a href="{% url 'superadmin:analytics' %}" class="nav-link">
                         <i class="fas fa-chart-bar"></i>

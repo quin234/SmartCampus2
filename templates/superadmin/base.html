@@ -32,7 +32,9 @@
                 <div class="user-profile">
                     <div class="profile-dropdown">
                         <button class="profile-btn">
-                            <img src="{% static 'images/default-avatar.png' %}" alt="Profile" class="profile-avatar">
+                            <div class="profile-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px;">
+                                {{ user.username|first|upper }}
+                            </div>
                             <span>{{ user.username }}</span>
                             <i class="fas fa-chevron-down"></i>
                         </button>
@@ -74,6 +76,18 @@
                     <a href="{% url 'superadmin:academic' %}" class="nav-link">
                         <i class="fas fa-graduation-cap"></i>
                         <span>Academic</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="payments">
+                    <a href="{% url 'superadmin:payments' %}" class="nav-link">
+                        <i class="fas fa-credit-card"></i>
+                        <span>Payments</span>
+                    </a>
+                </li>
+                <li class="nav-item" data-page="finance">
+                    <a href="{% url 'superadmin:payments' %}" class="nav-link" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; margin: 8px 0;" onclick="window.location.href=this.getAttribute('href'); return false;">
+                        <i class="fas fa-wallet"></i>
+                        <span>Finance</span>
                     </a>
                 </li>
                 <li class="nav-item" data-page="analytics">
@@ -119,6 +133,7 @@
 
     <script src="{% static 'js/admin/superadmin.js' %}"></script>
     {% block extra_js %}{% endblock %}
+    
 </body>
 </html>
 

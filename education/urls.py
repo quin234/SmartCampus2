@@ -53,6 +53,7 @@ urlpatterns = [
     # Director Dashboard
     path('director/dashboard/', views.director_dashboard, name='director_dashboard'),
     path('director/users/<int:user_id>/edit/', views.edit_user, name='edit_user'),
+    path('director/payment/initiate/', views.director_initiate_payment, name='director_initiate_payment'),
     
     # Student Portal (must come before college_landing to avoid conflicts)
     path('<str:college_slug>/login/', views.student_login_page, name='student_login'),

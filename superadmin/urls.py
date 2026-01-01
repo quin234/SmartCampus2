@@ -21,6 +21,12 @@ urlpatterns = [
     path('settings/', views.superadmin_settings, name='settings'),
     path('profile/', views.superadmin_profile, name='profile'),
     
+    # Super Admin Payments
+    path('payments/', views.superadmin_payments, name='payments'),
+    path('payments/config/<int:college_id>/', views.superadmin_payment_config, name='payment_config'),
+    path('payments/detail/<int:payment_id>/', views.superadmin_payment_detail, name='payment_detail'),
+    path('payments/callback/', views.superadmin_payment_callback, name='payment_callback'),
+    
     # Super Admin Logout
     path('logout/', views.superadmin_logout, name='logout'),
 ]

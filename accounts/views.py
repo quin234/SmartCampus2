@@ -20,6 +20,7 @@ from .models import Department, FeeStructure, Payment, AccountsSettings, Student
 from .forms import DepartmentForm, FeeStructureForm, PaymentForm, DarajaSettingsForm, DailyExpenditureForm
 from education.models import Student, CollegeCourse, Enrollment
 from decimal import InvalidOperation
+from .utils import resolve_active_branch, validate_branch_selection, get_colleges_to_query
 
 
 def calculate_expected_fees(student):
@@ -109,7 +110,17 @@ def calculate_expected_fees(student):
 @college_required
 def accounts_dashboard(request):
     """Accounts dashboard with key metrics, analytics, and projections"""
-    college = request.user.college
+    # Resolve active branch for directors
+    if request.user.is_director():
+        is_valid, active_branch, error_msg = validate_branch_selection(request, require_branch=True)
+        if not is_valid:
+            messages.warning(request, error_msg or "Please select a branch to view data.")
+            # Redirect to director dashboard if branch selection is required
+            if error_msg and "select a branch" in error_msg.lower():
+                return redirect('director_dashboard')
+        college = active_branch
+    else:
+        college = request.user.college
     
     # Get current academic year
     current_academic_year = college.current_academic_year or f"{timezone.now().year}/{timezone.now().year + 1}"
@@ -482,7 +493,15 @@ def fee_structure_edit(request, pk):
 @college_required
 def fee_structure_courses_list(request):
     """List all courses with fee structure status - new redesigned UI"""
-    college = request.user.college
+    # Resolve active branch for directors
+    if request.user.is_director():
+        is_valid, active_branch, error_msg = validate_branch_selection(request, require_branch=True)
+        if not is_valid:
+            messages.warning(request, error_msg or "Please select a branch to view data.")
+            return redirect('director_dashboard')
+        college = active_branch
+    else:
+        college = request.user.college
     courses = CollegeCourse.objects.filter(college=college).order_by('name')
     
     # Get all fee items
@@ -744,7 +763,15 @@ def fee_item_edit(request, fee_item_id):
 @college_required
 def payment_list(request):
     """List all payments"""
-    college = request.user.college
+    # Resolve active branch for directors
+    if request.user.is_director():
+        is_valid, active_branch, error_msg = validate_branch_selection(request, require_branch=True)
+        if not is_valid:
+            messages.warning(request, error_msg or "Please select a branch to view data.")
+            return redirect('director_dashboard')
+        college = active_branch
+    else:
+        college = request.user.college
     payments = Payment.objects.filter(
         student__college=college
     ).select_related('student').order_by('-date_paid')
@@ -822,7 +849,15 @@ def payment_create(request):
 @college_required
 def balance_report(request):
     """Student balance report - shows all students with their balances based on expected fees up to current semester"""
-    college = request.user.college
+    # Resolve active branch for directors
+    if request.user.is_director():
+        is_valid, active_branch, error_msg = validate_branch_selection(request, require_branch=True)
+        if not is_valid:
+            messages.warning(request, error_msg or "Please select a branch to view data.")
+            return redirect('director_dashboard')
+        college = active_branch
+    else:
+        college = request.user.college
     
     # Get filter option
     filter_with_course = request.GET.get('with_course', '')
@@ -883,7 +918,15 @@ def balance_report(request):
 @college_required
 def debtors_report(request):
     """Debtors report - students with outstanding balances"""
-    college = request.user.college
+    # Resolve active branch for directors
+    if request.user.is_director():
+        is_valid, active_branch, error_msg = validate_branch_selection(request, require_branch=True)
+        if not is_valid:
+            messages.warning(request, error_msg or "Please select a branch to view data.")
+            return redirect('director_dashboard')
+        college = active_branch
+    else:
+        college = request.user.college
     students = Student.objects.filter(college=college).select_related('course').order_by('admission_number')
     
     # Calculate balance for each student
@@ -926,7 +969,15 @@ def debtors_report(request):
 @college_required
 def payments_by_term_report(request):
     """Payments summary by semester and academic year"""
-    college = request.user.college
+    # Resolve active branch for directors
+    if request.user.is_director():
+        is_valid, active_branch, error_msg = validate_branch_selection(request, require_branch=True)
+        if not is_valid:
+            messages.warning(request, error_msg or "Please select a branch to view data.")
+            return redirect('director_dashboard')
+        college = active_branch
+    else:
+        college = request.user.college
     
     # Get all unique semester_number and academic_year combinations from payments
     payments = Payment.objects.filter(student__college=college).values('semester_number', 'academic_year').distinct()
@@ -969,7 +1020,15 @@ def accounts_settings(request):
     from .forms import SponsorshipSettingsForm
     from education.decorators import director_required
     
-    college = request.user.college
+    # Resolve active branch for directors
+    if request.user.is_director():
+        is_valid, active_branch, error_msg = validate_branch_selection(request, require_branch=True)
+        if not is_valid:
+            messages.warning(request, error_msg or "Please select a branch to view data.")
+            return redirect('director_dashboard')
+        college = active_branch
+    else:
+        college = request.user.college
     
     # Get or create accounts settings
     settings, created = AccountsSettings.objects.get_or_create(college=college)
@@ -1037,7 +1096,15 @@ def accounts_settings(request):
 @college_required
 def student_balances(request):
     """View all student balances"""
-    college = request.user.college
+    # Resolve active branch for directors
+    if request.user.is_director():
+        is_valid, active_branch, error_msg = validate_branch_selection(request, require_branch=True)
+        if not is_valid:
+            messages.warning(request, error_msg or "Please select a branch to view data.")
+            return redirect('director_dashboard')
+        college = active_branch
+    else:
+        college = request.user.college
     students = Student.objects.filter(college=college, status='active').select_related('course')
     
     # Calculate balances for each student
@@ -1088,7 +1155,15 @@ def student_balances(request):
 @college_required
 def invoice_list(request):
     """Invoice view with student search and invoice details"""
-    college = request.user.college
+    # Resolve active branch for directors
+    if request.user.is_director():
+        is_valid, active_branch, error_msg = validate_branch_selection(request, require_branch=True)
+        if not is_valid:
+            messages.warning(request, error_msg or "Please select a branch to view data.")
+            return redirect('director_dashboard')
+        college = active_branch
+    else:
+        college = request.user.college
     
     # Get search query
     search_query = request.GET.get('search', '')
@@ -1405,7 +1480,15 @@ def daily_expenditure_report(request):
     Read-only report view for Director.
     Shows submitted expenditures for a selected date with line graph.
     """
-    college = request.user.college
+    # Resolve active branch for directors
+    if request.user.is_director():
+        is_valid, active_branch, error_msg = validate_branch_selection(request, require_branch=True)
+        if not is_valid:
+            messages.warning(request, error_msg or "Please select a branch to view data.")
+            return redirect('director_dashboard')
+        college = active_branch
+    else:
+        college = request.user.college
     
     # Get selected date from query parameter (default to today)
     selected_date_str = request.GET.get('date', None)

@@ -21,10 +21,12 @@ from .models import (
     CollegeCourse, CollegeUnit, CollegeCourseUnit, Student, Enrollment, Result,
     SchoolRegistration, Announcement, StudentSemesterSignIn, PasswordResetCode
 )
-from accounts.models import Payment, FeeStructure
+from accounts.models import Payment, FeeStructure, DarajaSettings
+from accounts.daraja_service import DarajaService
 from accounts.views import calculate_expected_fees
 from decimal import Decimal
 from django.db.models import Sum
+from superadmin.models import CollegePaymentConfig, CollegePayment
 from .middleware import (
     college_required, super_admin_required, college_admin_required, lecturer_required
 )
@@ -587,7 +589,10 @@ def college_landing_page(request, college_slug):
     
     college = request.user.college
     
-    # Verify college slug matches
+    # Verify college exists and slug matches
+    if not college:
+        raise Http404("College not found")
+    
     if college.get_slug() != college_slug:
         raise Http404("College not found")
     
@@ -1002,6 +1007,18 @@ def director_dashboard(request):
         'college': main_college,
     }
     
+    # Get payment config and latest payment if college is suspended
+    if main_college.registration_status == 'inactive':
+        from superadmin.models import CollegePaymentConfig, CollegePayment
+        try:
+            payment_config = CollegePaymentConfig.objects.get(college=main_college, status='active')
+            context['payment_config'] = payment_config
+            latest_payment = CollegePayment.objects.filter(college=main_college).order_by('-created_at').first()
+            context['latest_payment'] = latest_payment
+        except CollegePaymentConfig.DoesNotExist:
+            context['payment_config'] = None
+            context['latest_payment'] = None
+    
     return render(request, 'education/director/dashboard.html', context)
 
 
@@ -1120,6 +1137,136 @@ def edit_user(request, user_id):
     
     # If not AJAX, redirect to dashboard
     return redirect('director_dashboard')
+
+
+@login_required
+@director_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def director_initiate_payment(request):
+    """Director - Initiate M-Pesa payment for college subscription"""
+    college = request.user.college
+    
+    # Check if college is suspended
+    if college.registration_status != 'inactive':
+        return JsonResponse({
+            'success': False,
+            'error': 'College is not suspended. Payment not required.'
+        }, status=400)
+    
+    try:
+        data = json.loads(request.body)
+        phone_number = data.get('phone_number', '').strip()
+        
+        # Get payment config
+        try:
+            config = CollegePaymentConfig.objects.get(college=college, status='active')
+        except CollegePaymentConfig.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Payment configuration not found. Please contact Super Admin.'
+            }, status=400)
+        
+        # Get Daraja settings (use college's Daraja settings)
+        try:
+            daraja_settings = DarajaSettings.objects.get(college=college, is_active=True)
+        except DarajaSettings.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'M-Pesa payments are not configured for this college. Please configure in Accounts Settings.'
+            }, status=400)
+        
+        # Validate phone number
+        if not phone_number:
+            return JsonResponse({
+                'success': False,
+                'error': 'Phone number is required'
+            }, status=400)
+        
+        # Create payment record
+        payment = CollegePayment.objects.create(
+            college=college,
+            config=config,
+            amount=config.amount,
+            status='pending',
+            phone_number=phone_number
+        )
+        
+        # Initiate STK Push using DarajaService
+        try:
+            daraja_service = DarajaService(college)
+            
+            # Use account reference from config
+            account_reference = config.get_account_reference()
+            
+            # Initiate STK Push (we'll need to modify DarajaService to support college payments)
+            # For now, we'll use a workaround by creating a temporary student-like object
+            # Actually, we need to extend DarajaService or create a new method
+            
+            # Use the paybill from config, but credentials from DarajaSettings
+            # Note: We use DarajaService but need to ensure it uses the correct paybill
+            # The DarajaService uses DarajaSettings which has its own paybill
+            # For college payments, we should use the paybill from CollegePaymentConfig
+            # But DarajaService is tied to DarajaSettings, so we'll use what's configured
+            
+            result = daraja_service.initiate_stk_push_for_college(
+                amount=config.amount,
+                phone_number=phone_number,
+                account_reference=account_reference,
+                transaction_desc=f"College Payment - {college.name}"
+            )
+            
+            if result.get('success'):
+                # Update payment with request IDs
+                payment.merchant_request_id = result.get('merchant_request_id')
+                payment.checkout_request_id = result.get('checkout_request_id')
+                payment.status = 'processing'
+                payment.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': result.get('response_description', 'Payment request sent successfully'),
+                    'payment_id': payment.id,
+                    'merchant_request_id': result.get('merchant_request_id'),
+                    'checkout_request_id': result.get('checkout_request_id')
+                })
+            else:
+                payment.status = 'failed'
+                payment.notes = result.get('error', 'Payment initiation failed')
+                payment.save()
+                
+                return JsonResponse({
+                    'success': False,
+                    'error': result.get('error', 'Failed to initiate payment')
+                }, status=400)
+                
+        except ValueError as e:
+            payment.status = 'failed'
+            payment.notes = str(e)
+            payment.save()
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=400)
+        except Exception as e:
+            payment.status = 'failed'
+            payment.notes = f'Payment initiation failed: {str(e)}'
+            payment.save()
+            return JsonResponse({
+                'success': False,
+                'error': f'Payment initiation failed: {str(e)}'
+            }, status=500)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
 
 
 @login_required

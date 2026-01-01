@@ -146,25 +146,25 @@
             </li>
             {% endif %}
             <li class="top-nav-menu-item">
-                <a href="{% url 'accounts:balance_report' %}" class="top-nav-menu-link {% if 'balance' in request.resolver_match.url_name %}active{% endif %}">
+                <a href="{% url 'accounts:balance_report' %}{% if request.user.is_director and active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="top-nav-menu-link {% if 'balance' in request.resolver_match.url_name %}active{% endif %}" data-requires-branch="true">
                     <i class="fas fa-chart-bar"></i>
                     <span>Balance Report</span>
                 </a>
             </li>
             <li class="top-nav-menu-item">
-                <a href="{% url 'accounts:debtors_report' %}" class="top-nav-menu-link {% if 'debtors' in request.resolver_match.url_name %}active{% endif %}">
+                <a href="{% url 'accounts:debtors_report' %}{% if request.user.is_director and active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="top-nav-menu-link {% if 'debtors' in request.resolver_match.url_name %}active{% endif %}" data-requires-branch="true">
                     <i class="fas fa-exclamation-triangle"></i>
                     <span>Debtors</span>
                 </a>
             </li>
             <li class="top-nav-menu-item">
-                <a href="{% url 'accounts:payments_by_term_report' %}" class="top-nav-menu-link {% if 'payments_by_term' in request.resolver_match.url_name %}active{% endif %}">
+                <a href="{% url 'accounts:payments_by_term_report' %}{% if request.user.is_director and active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="top-nav-menu-link {% if 'payments_by_term' in request.resolver_match.url_name %}active{% endif %}" data-requires-branch="true">
                     <i class="fas fa-chart-pie"></i>
                     <span>Payments by Semester</span>
                 </a>
             </li>
             <li class="top-nav-menu-item">
-                <a href="{% url 'accounts:invoice_list' %}" class="top-nav-menu-link {% if 'invoice' in request.resolver_match.url_name %}active{% endif %}">
+                <a href="{% url 'accounts:invoice_list' %}{% if request.user.is_director and active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="top-nav-menu-link {% if 'invoice' in request.resolver_match.url_name %}active{% endif %}" data-requires-branch="true">
                     <i class="fas fa-file-invoice"></i>
                     <span>Invoice</span>
                 </a>
@@ -203,35 +203,71 @@
 
     <!-- Navigation Sidebar -->
     <aside class="sidebar" id="accounts-sidebar">
+        {% if request.user.is_director and has_multiple_branches %}
+        <!-- Branch Selector Header for Directors -->
+        <div class="sidebar-branch-header" style="padding: 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-card);">
+            <label for="branch-selector" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                <i class="fas fa-building"></i> Select Branch
+            </label>
+            <select id="branch-selector" class="form-input" style="width: 100%; padding: 8px; font-size: 14px;" onchange="switchBranch(this.value)">
+                {% for branch in all_branches %}
+                <option value="{{ branch.id }}" {% if active_branch and active_branch.id == branch.id %}selected{% endif %}>
+                    {{ branch.name }}{% if branch.id == request.user.college.id and branch.is_main_college %} (Main){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            {% if active_branch %}
+            <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                <i class="fas fa-check-circle" style="color: var(--success-color);"></i>
+                <span>Viewing: <strong>{{ active_branch.name }}</strong></span>
+            </div>
+            {% else %}
+            <div style="margin-top: 8px; font-size: 12px; color: var(--warning-color);">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>Please select a branch</span>
+            </div>
+            {% endif %}
+        </div>
+        {% elif request.user.is_director and active_branch %}
+        <!-- Show active branch name when only one branch exists -->
+        <div class="sidebar-branch-header" style="padding: 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-card);">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                <i class="fas fa-building"></i> Active Branch
+            </div>
+            <div style="font-size: 14px; color: var(--text-primary); font-weight: 500;">
+                {{ active_branch.name }}
+            </div>
+        </div>
+        {% endif %}
         <nav class="sidebar-nav">
             <ul class="nav-menu">
                 <li class="nav-item">
-                    <a href="{% url 'accounts:dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+                    <a href="{% url 'accounts:dashboard' %}{% if request.user.is_director and active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" data-requires-branch="true">
                         <i class="fas fa-chart-line"></i>
                         <span>Dashboard</span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a href="{% url 'accounts:fee_structure_courses_list' %}" class="nav-link {% if 'fee_structure' in request.resolver_match.url_name %}active{% endif %}">
+                    <a href="{% url 'accounts:fee_structure_courses_list' %}{% if request.user.is_director and active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="nav-link {% if 'fee_structure' in request.resolver_match.url_name %}active{% endif %}" data-requires-branch="true">
                         <i class="fas fa-file-invoice-dollar"></i>
                         <span>Fee Structure</span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a href="{% url 'accounts:payment_list' %}" class="nav-link {% if 'payment' in request.resolver_match.url_name %}active{% endif %}">
+                    <a href="{% url 'accounts:payment_list' %}{% if request.user.is_director and active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="nav-link {% if 'payment' in request.resolver_match.url_name %}active{% endif %}" data-requires-branch="true">
                         <i class="fas fa-money-bill-wave"></i>
                         <span>Payments</span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a href="{% url 'accounts:student_balances' %}" class="nav-link {% if 'student_balances' in request.resolver_match.url_name %}active{% endif %}">
+                    <a href="{% url 'accounts:student_balances' %}{% if request.user.is_director and active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="nav-link {% if 'student_balances' in request.resolver_match.url_name %}active{% endif %}" data-requires-branch="true">
                         <i class="fas fa-balance-scale"></i>
                         <span>Student Balances</span>
                     </a>
                 </li>
                 {% if request.user.is_principal or request.user.is_accounts_officer %}
                 <li class="nav-item">
-                    <a href="{% url 'accounts:daily_expenditure_draft' %}" class="nav-link {% if 'daily_expenditure' in request.resolver_match.url_name %}active{% endif %}">
+                    <a href="{% url 'accounts:daily_expenditure_draft' %}{% if request.user.is_director and active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="nav-link {% if 'daily_expenditure' in request.resolver_match.url_name %}active{% endif %}" data-requires-branch="true">
                         <i class="fas fa-receipt"></i>
                         <span>Daily Expenditure</span>
                     </a>
@@ -239,14 +275,14 @@
                 {% endif %}
                 {% if request.user.is_director %}
                 <li class="nav-item">
-                    <a href="{% url 'accounts:daily_expenditure_report' %}" class="nav-link {% if 'daily_expenditure_report' in request.resolver_match.url_name or 'daily_expenditure_graph_data' in request.resolver_match.url_name %}active{% endif %}">
+                    <a href="{% url 'accounts:daily_expenditure_report' %}{% if active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="nav-link {% if 'daily_expenditure_report' in request.resolver_match.url_name or 'daily_expenditure_graph_data' in request.resolver_match.url_name %}active{% endif %}" data-requires-branch="true">
                         <i class="fas fa-chart-line"></i>
                         <span>Expenditure Report</span>
                     </a>
                 </li>
                 {% endif %}
                 <li class="nav-item">
-                    <a href="{% url 'accounts:accounts_settings' %}" class="nav-link {% if 'accounts_settings' in request.resolver_match.url_name or 'sponsorship_settings' in request.resolver_match.url_name %}active{% endif %}">
+                    <a href="{% url 'accounts:accounts_settings' %}{% if request.user.is_director and active_branch %}?branch_id={{ active_branch.id }}{% endif %}" class="nav-link {% if 'accounts_settings' in request.resolver_match.url_name or 'sponsorship_settings' in request.resolver_match.url_name %}active{% endif %}" data-requires-branch="true">
                         <i class="fas fa-cog"></i>
                         <span>Settings</span>
                     </a>
@@ -267,6 +303,74 @@
         // Close dropdown when clicking outside
         document.addEventListener('click', function() {
             document.getElementById('profile-menu')?.classList.remove('active');
+        });
+
+        // Branch selection handler for Directors
+        function switchBranch(branchId) {
+            if (!branchId) return;
+            
+            // Store in localStorage for persistence
+            localStorage.setItem('selected_branch_id', branchId);
+            
+            // Update all sidebar links to include branch_id
+            const sidebarLinks = document.querySelectorAll('#accounts-sidebar .nav-link[data-requires-branch="true"]');
+            sidebarLinks.forEach(link => {
+                const url = new URL(link.href);
+                url.searchParams.set('branch_id', branchId);
+                link.href = url.toString();
+            });
+            
+            // Update top nav links if they exist
+            const topNavLinks = document.querySelectorAll('.top-nav-menu-link[data-requires-branch="true"]');
+            topNavLinks.forEach(link => {
+                try {
+                    const url = new URL(link.href, window.location.origin);
+                    url.searchParams.set('branch_id', branchId);
+                    link.href = url.toString();
+                } catch (e) {
+                    // If URL parsing fails, append branch_id manually
+                    const separator = link.href.includes('?') ? '&' : '?';
+                    link.href = link.href + separator + 'branch_id=' + branchId;
+                }
+            });
+            
+            // Reload current page with branch_id parameter
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('branch_id', branchId);
+            window.location.href = currentUrl.toString();
+        }
+
+        // Validate branch selection before navigating (for directors with multiple branches)
+        document.addEventListener('DOMContentLoaded', function() {
+            {% if request.user.is_director and has_multiple_branches %}
+            const sidebarLinks = document.querySelectorAll('#accounts-sidebar .nav-link[data-requires-branch="true"]');
+            const branchSelector = document.getElementById('branch-selector');
+            const activeBranchId = {{ active_branch.id|default:"null" }};
+            const branchSelected = {{ branch_selected|yesno:"true,false" }};
+            
+            // If no branch is selected and multiple branches exist, prevent navigation
+            if (!branchSelected && branchSelector && branchSelector.options.length > 1) {
+                sidebarLinks.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        const selectedBranchId = branchSelector.value;
+                        if (!selectedBranchId || selectedBranchId === '') {
+                            e.preventDefault();
+                            alert('Please select a branch from the dropdown above to view data.');
+                            branchSelector.focus();
+                            branchSelector.style.borderColor = 'var(--error-color)';
+                            return false;
+                        }
+                    });
+                });
+            }
+            
+            // Restore branch selection from localStorage on page load
+            const savedBranchId = localStorage.getItem('selected_branch_id');
+            if (savedBranchId && branchSelector && savedBranchId !== activeBranchId) {
+                // Update selector if saved branch is different
+                branchSelector.value = savedBranchId;
+            }
+            {% endif %}
         });
 
         // Mobile menu toggle

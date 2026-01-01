@@ -116,6 +116,111 @@ class DarajaService:
         password = base64.b64encode(data_to_encode.encode()).decode()
         return password, timestamp
     
+    def initiate_stk_push_for_college(self, amount, phone_number, account_reference, transaction_desc):
+        """
+        Initiate STK Push payment request for college payments (not student payments)
+        
+        Args:
+            amount: Payment amount (Decimal)
+            phone_number: M-Pesa registered phone number (format: 254712345678)
+            account_reference: Account reference string
+            transaction_desc: Transaction description
+        
+        Returns:
+            dict with 'success', 'merchant_request_id', 'checkout_request_id', 'response_description'
+        """
+        # Re-validate required fields before STK push
+        try:
+            self._validate_required_fields()
+        except ValueError as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+        
+        # Validate phone number format
+        phone_number = phone_number.strip()
+        if not phone_number.startswith('254'):
+            if phone_number.startswith('0'):
+                phone_number = '254' + phone_number[1:]
+            elif phone_number.startswith('+254'):
+                phone_number = phone_number[1:]
+            else:
+                phone_number = '254' + phone_number
+        
+        if len(phone_number) != 12:
+            return {
+                'success': False,
+                'error': 'Invalid phone number format. Use 254XXXXXXXXX'
+            }
+        
+        # Get access token
+        try:
+            access_token = self.get_access_token()
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Failed to authenticate with Daraja API: {str(e)}'
+            }
+        
+        # Generate password and timestamp
+        password, timestamp = self.generate_password()
+        
+        # Prepare callback URL
+        callback_url = self.settings.callback_url
+        if not callback_url:
+            base_url = getattr(settings, 'BASE_URL', 'http://localhost:8000')
+            callback_url = f"{base_url}/superadmin/payments/callback/"
+        
+        # STK Push payload
+        payload = {
+            "BusinessShortCode": self.shortcode,
+            "Password": password,
+            "Timestamp": timestamp,
+            "TransactionType": "CustomerPayBillOnline",
+            "Amount": int(float(amount)),
+            "PartyA": phone_number,
+            "PartyB": self.shortcode,
+            "PhoneNumber": phone_number,
+            "CallBackURL": callback_url,
+            "AccountReference": account_reference,
+            "TransactionDesc": transaction_desc
+        }
+        
+        # Make STK Push request
+        url = f"{self.base_url}/mpesa/stkpush/v1/processrequest"
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            if 'ResponseCode' in data and data['ResponseCode'] == '0':
+                return {
+                    'success': True,
+                    'merchant_request_id': data.get('MerchantRequestID'),
+                    'checkout_request_id': data.get('CheckoutRequestID'),
+                    'response_description': data.get('CustomerMessage', 'Payment request sent successfully'),
+                    'response_code': data.get('ResponseCode')
+                }
+            else:
+                error_msg = data.get('errorMessage') or data.get('ResponseDescription', 'Payment request failed')
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'response_code': data.get('ResponseCode')
+                }
+                
+        except requests.exceptions.RequestException as e:
+            return {
+                'success': False,
+                'error': f'Failed to initiate payment: {str(e)}'
+            }
+    
     def initiate_stk_push(self, student, amount, phone_number, invoice=None):
         """
         Initiate STK Push payment request

@@ -1191,6 +1191,116 @@
             }
         }
         
+        /* Mobile Message for Report Editor */
+        .report-editor-mobile-message {
+            display: none;
+            text-align: center;
+            padding: 60px 20px;
+            background: var(--bg-white);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        
+        .report-editor-mobile-message i {
+            font-size: 64px;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+        }
+        
+        .report-editor-mobile-message h2 {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin: 0 0 12px 0;
+        }
+        
+        .report-editor-mobile-message p {
+            font-size: 16px;
+            color: var(--text-light);
+            margin: 0;
+        }
+        
+        @media (max-width: 1024px) {
+            /* Hide report editor on tablets and mobile */
+            #report-section .report-editor-container {
+                display: none !important;
+            }
+            
+            /* Show mobile message */
+            .report-editor-mobile-message {
+                display: block;
+            }
+            
+            /* Hide modal report editor on mobile */
+            #report-editor-modal .report-editor-container {
+                display: none !important;
+            }
+            
+            /* Show mobile message in modal */
+            #report-editor-modal .report-editor-mobile-message {
+                display: block;
+            }
+        }
+        
+        /* Print styles for report editor - ensure table borders and colors are preserved */
+        @media print {
+            /* Hide grid overlay in print */
+            .canvas-grid-overlay,
+            [data-print-ignore="true"],
+            #canvas-guides,
+            #modal-canvas-guides {
+                display: none !important;
+            }
+            
+            /* Ensure table borders are always visible in print */
+            .report-element table,
+            .report-element table th,
+            .report-element table td {
+                border: 1px solid #000000 !important;
+                border-collapse: collapse !important;
+            }
+            
+            /* Preserve background and text colors in print */
+            .report-element {
+                background: #ffffff !important;
+                color: #000000 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            
+            .report-element table {
+                background: #ffffff !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            
+            .report-element table th,
+            .report-element table td {
+                background: #ffffff !important;
+                color: #000000 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
+        
+        /* Ensure grid overlay doesn't interfere with content */
+        .canvas-grid-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        /* Ensure report elements are above grid */
+        .report-element {
+            position: relative;
+            z-index: 10;
+        }
+        
         .nominal-roll-header-bar {
             display: flex;
             gap: 12px;
@@ -4699,6 +4809,13 @@
                 </div>
             </div>
 
+            <!-- Mobile Message -->
+            <div class="report-editor-mobile-message">
+                <i class="fas fa-desktop"></i>
+                <h2>Use Desktop To Design Reports</h2>
+                <p>The report editor is optimized for desktop screens. Please use a desktop or laptop computer to design and customize report templates.</p>
+            </div>
+
             <div class="report-editor-container" style="display: flex; gap: 20px; height: calc(100vh - 200px);">
                 <!-- Left Sidebar: Templates List & Tools -->
                 <div class="report-editor-sidebar" style="width: 300px; background: var(--bg-white); border-radius: 8px; padding: 20px; overflow-y: auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
@@ -5020,6 +5137,13 @@
                         </div>
                     </div>
 
+                    <!-- Mobile Message for Modal -->
+                    <div class="report-editor-mobile-message" style="margin: 20px;">
+                        <i class="fas fa-desktop"></i>
+                        <h2>Use Desktop To Design Reports</h2>
+                        <p>The report editor is optimized for desktop screens. Please use a desktop or laptop computer to design and customize report templates.</p>
+                    </div>
+
                     <div class="report-editor-container" style="display: flex; gap: 20px; height: 100%; padding: 20px;">
                         <!-- Left Sidebar: Templates List & Tools -->
                         <div class="report-editor-sidebar" style="width: 300px; background: var(--bg-white); border-radius: 8px; padding: 20px; overflow-y: auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
@@ -5190,6 +5314,18 @@
                             <div class="form-group" style="margin-bottom: 12px;">
                                 <label class="form-label" style="font-size: 12px;">Height (px)</label>
                                 <input type="number" id="modal-canvas-height" class="form-input" min="200" max="3000" value="1123" onchange="updateCanvasSize()" style="font-size: 12px; padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label class="form-label" style="font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" id="modal-toggle-grid" checked onchange="toggleGrid()" style="margin: 0;">
+                                    <span>Grid</span>
+                                </label>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label class="form-label" style="font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" id="modal-toggle-margins" checked onchange="toggleMargins()" style="margin: 0;">
+                                    <span>Margins</span>
+                                </label>
                             </div>
                             <div class="form-group" style="margin-bottom: 12px;">
                                 <label class="form-label" style="font-size: 12px; display: flex; align-items: center; gap: 8px;">
@@ -17477,7 +17613,7 @@
             }
         }
 
-        // Draw alignment guides on canvas
+        // Draw alignment guides on canvas with full grid pattern
         function updateCanvasGuides() {
             const canvas = getElement('report-canvas');
             if (!canvas) return;
@@ -17485,16 +17621,25 @@
             const guidesContainer = document.getElementById('canvas-guides') || document.getElementById('modal-canvas-guides');
             if (!guidesContainer) return;
             
+            // Check if grid is enabled
+            const gridToggle = document.getElementById('toggle-grid') || document.getElementById('modal-toggle-grid');
+            const gridEnabled = gridToggle ? gridToggle.checked : true;
+            
             const width = parseInt(canvas.style.width) || canvas.offsetWidth || 794;
             const height = parseInt(canvas.style.height) || canvas.offsetHeight || 1123;
             
             // Default margin (72 points = 1 inch, converted to pixels at 96 DPI = 96px)
             const margin = 96;
+            const gridSpacing = 20; // Grid spacing in pixels
             
             // Clear existing guides
             guidesContainer.innerHTML = '';
             
-            // Create SVG overlay for guides
+            if (!gridEnabled) {
+                return; // Don't render grid if disabled
+            }
+            
+            // Create SVG overlay for guides - positioned above canvas background but below content
             const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
             svg.style.position = 'absolute';
             svg.style.top = '0';
@@ -17502,10 +17647,38 @@
             svg.style.width = '100%';
             svg.style.height = '100%';
             svg.style.pointerEvents = 'none';
+            svg.style.zIndex = '1'; // Above canvas background, below content
             svg.setAttribute('width', width);
             svg.setAttribute('height', height);
+            svg.setAttribute('class', 'canvas-grid-overlay');
+            svg.setAttribute('data-print-ignore', 'true'); // Mark for print exclusion
             
-            // Center lines (dashed, blue)
+            // Draw full grid pattern (vertical and horizontal lines)
+            // Vertical grid lines
+            for (let x = 0; x <= width; x += gridSpacing) {
+                const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                gridLine.setAttribute('x1', x);
+                gridLine.setAttribute('y1', 0);
+                gridLine.setAttribute('x2', x);
+                gridLine.setAttribute('y2', height);
+                gridLine.setAttribute('stroke', 'rgba(0,0,0,0.15)');
+                gridLine.setAttribute('stroke-width', '1');
+                svg.appendChild(gridLine);
+            }
+            
+            // Horizontal grid lines
+            for (let y = 0; y <= height; y += gridSpacing) {
+                const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                gridLine.setAttribute('x1', 0);
+                gridLine.setAttribute('y1', y);
+                gridLine.setAttribute('x2', width);
+                gridLine.setAttribute('y2', y);
+                gridLine.setAttribute('stroke', 'rgba(0,0,0,0.15)');
+                gridLine.setAttribute('stroke-width', '1');
+                svg.appendChild(gridLine);
+            }
+            
+            // Center lines (vertical + horizontal) - more visible
             const centerX = width / 2;
             const centerY = height / 2;
             
@@ -17515,10 +17688,8 @@
             vCenterLine.setAttribute('y1', 0);
             vCenterLine.setAttribute('x2', centerX);
             vCenterLine.setAttribute('y2', height);
-            vCenterLine.setAttribute('stroke', '#3b82f6');
+            vCenterLine.setAttribute('stroke', 'rgba(0,0,0,0.15)');
             vCenterLine.setAttribute('stroke-width', '1');
-            vCenterLine.setAttribute('stroke-dasharray', '5,5');
-            vCenterLine.setAttribute('opacity', '0.5');
             svg.appendChild(vCenterLine);
             
             // Horizontal center line
@@ -17527,23 +17698,19 @@
             hCenterLine.setAttribute('y1', centerY);
             hCenterLine.setAttribute('x2', width);
             hCenterLine.setAttribute('y2', centerY);
-            hCenterLine.setAttribute('stroke', '#3b82f6');
+            hCenterLine.setAttribute('stroke', 'rgba(0,0,0,0.15)');
             hCenterLine.setAttribute('stroke-width', '1');
-            hCenterLine.setAttribute('stroke-dasharray', '5,5');
-            hCenterLine.setAttribute('opacity', '0.5');
             svg.appendChild(hCenterLine);
             
-            // Margin guide lines (dashed, red)
+            // Margin guide lines - more visible (rgba(0,0,0,0.3))
             // Top margin
             const topMargin = document.createElementNS('http://www.w3.org/2000/svg', 'line');
             topMargin.setAttribute('x1', 0);
             topMargin.setAttribute('y1', margin);
             topMargin.setAttribute('x2', width);
             topMargin.setAttribute('y2', margin);
-            topMargin.setAttribute('stroke', '#ef4444');
+            topMargin.setAttribute('stroke', 'rgba(0,0,0,0.3)');
             topMargin.setAttribute('stroke-width', '1');
-            topMargin.setAttribute('stroke-dasharray', '3,3');
-            topMargin.setAttribute('opacity', '0.4');
             svg.appendChild(topMargin);
             
             // Bottom margin
@@ -17552,10 +17719,8 @@
             bottomMargin.setAttribute('y1', height - margin);
             bottomMargin.setAttribute('x2', width);
             bottomMargin.setAttribute('y2', height - margin);
-            bottomMargin.setAttribute('stroke', '#ef4444');
+            bottomMargin.setAttribute('stroke', 'rgba(0,0,0,0.3)');
             bottomMargin.setAttribute('stroke-width', '1');
-            bottomMargin.setAttribute('stroke-dasharray', '3,3');
-            bottomMargin.setAttribute('opacity', '0.4');
             svg.appendChild(bottomMargin);
             
             // Left margin
@@ -17564,10 +17729,8 @@
             leftMargin.setAttribute('y1', 0);
             leftMargin.setAttribute('x2', margin);
             leftMargin.setAttribute('y2', height);
-            leftMargin.setAttribute('stroke', '#ef4444');
+            leftMargin.setAttribute('stroke', 'rgba(0,0,0,0.3)');
             leftMargin.setAttribute('stroke-width', '1');
-            leftMargin.setAttribute('stroke-dasharray', '3,3');
-            leftMargin.setAttribute('opacity', '0.4');
             svg.appendChild(leftMargin);
             
             // Right margin
@@ -17576,13 +17739,25 @@
             rightMargin.setAttribute('y1', 0);
             rightMargin.setAttribute('x2', width - margin);
             rightMargin.setAttribute('y2', height);
-            rightMargin.setAttribute('stroke', '#ef4444');
+            rightMargin.setAttribute('stroke', 'rgba(0,0,0,0.3)');
             rightMargin.setAttribute('stroke-width', '1');
-            rightMargin.setAttribute('stroke-dasharray', '3,3');
-            rightMargin.setAttribute('opacity', '0.4');
             svg.appendChild(rightMargin);
             
             guidesContainer.appendChild(svg);
+        }
+        
+        // Toggle grid visibility
+        function toggleGrid() {
+            const gridToggle = document.getElementById('toggle-grid') || document.getElementById('modal-toggle-grid');
+            if (gridToggle) {
+                updateCanvasGuides();
+            }
+        }
+        
+        // Toggle margins visibility
+        function toggleMargins() {
+            // Margins are always shown when grid is enabled
+            updateCanvasGuides();
         }
 
         // Snap element to nearest guide
@@ -17665,6 +17840,8 @@
                 elementDiv.style.padding = '4px';
                 elementDiv.style.minWidth = '20px';
                 elementDiv.style.minHeight = '20px';
+                // Ensure content is above grid layer
+                elementDiv.style.zIndex = '10';
                 
                 if (element.type === 'text' || element.type === 'placeholder') {
                     // Check if it's a data-bound placeholder
@@ -17698,28 +17875,34 @@
                     const tableConfig = element.tableConfig || {};
                     const columns = tableConfig.columns || [];
                     
-                    // Build table preview HTML - FORCE white background and black text
+                    // Build table preview HTML - FORCE white background, black text, and visible borders
+                    // Use actual HTML table with explicit borders for better print/export support
                     let tableHTML = '<div style="background: #ffffff !important; padding: 8px; border-radius: 3px; border: 1px solid #000000 !important; min-width: ' + tableWidth + 'px; min-height: ' + tableHeight + 'px; color: #000000 !important;">';
                     tableHTML += '<div style="font-weight: 600; margin-bottom: 8px; font-size: 12px; color: #000000 !important;"><i class="fas fa-table"></i> ' + tableInfo.label + '</div>';
                     
                     if (columns.length > 0) {
-                        // Render header row - FORCE black text and border
-                        tableHTML += '<div style="display: flex; gap: 4px; margin-bottom: 4px; font-weight: 600; font-size: 11px; border-bottom: 1px solid #000000 !important; padding-bottom: 4px; color: #000000 !important;">';
-                        columns.forEach(function(col) {
-                            const colWidth = col.width || 80;
-                            const alignment = col.alignment || 'left';
-                            tableHTML += '<div style="min-width: ' + colWidth + 'px; text-align: ' + alignment + '; padding: 2px 4px; color: #000000 !important;">' + (col.header || col.field || '') + '</div>';
-                        });
-                        tableHTML += '</div>';
+                        // Use actual HTML table with explicit borders
+                        tableHTML += '<table style="width: 100%; border-collapse: collapse; border: 1px solid #000000 !important; background: #ffffff !important;">';
                         
-                        // Render sample data row - FORCE black text
-                        tableHTML += '<div style="display: flex; gap: 4px; font-size: 10px; color: #000000 !important;">';
+                        // Render header row with borders
+                        tableHTML += '<thead><tr style="background: #ffffff !important;">';
                         columns.forEach(function(col) {
                             const colWidth = col.width || 80;
                             const alignment = col.alignment || 'left';
-                            tableHTML += '<div style="min-width: ' + colWidth + 'px; text-align: ' + alignment + '; padding: 2px 4px; color: #000000 !important;">...</div>';
+                            tableHTML += '<th style="border: 1px solid #000000 !important; padding: 4px 8px; text-align: ' + alignment + '; font-weight: 600; font-size: 11px; color: #000000 !important; background: #ffffff !important; min-width: ' + colWidth + 'px;">' + (col.header || col.field || '') + '</th>';
                         });
-                        tableHTML += '</div>';
+                        tableHTML += '</tr></thead>';
+                        
+                        // Render sample data row with borders
+                        tableHTML += '<tbody><tr style="background: #ffffff !important;">';
+                        columns.forEach(function(col) {
+                            const colWidth = col.width || 80;
+                            const alignment = col.alignment || 'left';
+                            tableHTML += '<td style="border: 1px solid #000000 !important; padding: 4px 8px; text-align: ' + alignment + '; font-size: 10px; color: #000000 !important; background: #ffffff !important; min-width: ' + colWidth + 'px;">...</td>';
+                        });
+                        tableHTML += '</tr></tbody>';
+                        
+                        tableHTML += '</table>';
                     } else {
                         tableHTML += '<div style="color: #000000 !important; font-size: 11px; padding: 8px;">No columns defined. Add columns in the properties panel.</div>';
                     }
@@ -17731,6 +17914,10 @@
                     // Force white background on the element div itself
                     elementDiv.style.backgroundColor = '#ffffff';
                     elementDiv.style.color = '#000000';
+                    // Ensure table borders are always visible
+                    elementDiv.style.border = canEditReports ? '2px dashed transparent' : 'none';
+                    // Set z-index to be above grid
+                    elementDiv.style.zIndex = '10';
                 }
                 
                 // Set width and height if specified

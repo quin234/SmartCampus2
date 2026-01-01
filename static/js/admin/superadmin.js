@@ -202,12 +202,10 @@ function getCsrfToken() {
 // ============================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Check authentication
-    if (!getToken()) {
-        removeToken();
-        return;
-    }
-
+    // Skip token check for session-based authentication
+    // Session-based auth doesn't use localStorage tokens
+    // The Django session handles authentication
+    
     // Initialize app
     initializeApp();
 });
@@ -221,7 +219,12 @@ function initializeApp() {
     setupCollegeDetailModal();
     setupClickableCards();
     setupDetailModal();
-    loadDashboardData();
+    
+    // Only load dashboard data if we're on the dashboard page
+    if (document.getElementById('total-colleges') || window.location.pathname.includes('/dashboard')) {
+        loadDashboardData();
+    }
+    
     loadUserProfile();
 }
 
@@ -240,18 +243,37 @@ function setupNavigation() {
         });
     }
 
-    // Navigation items
+    // Navigation items - set active state based on current URL
     const navItems = document.querySelectorAll('.nav-item[data-page]');
+    const currentPath = window.location.pathname;
+    
     navItems.forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            const page = item.getAttribute('data-page');
-            showPage(page);
+        const navLink = item.querySelector('.nav-link');
+        if (navLink) {
+            const href = navLink.getAttribute('href');
+            // Set active state based on current URL
+            if (href && (currentPath === href || currentPath.startsWith(href + '/'))) {
+                navItems.forEach(ni => ni.classList.remove('active'));
+                item.classList.add('active');
+            }
             
-            // Update active state
-            navItems.forEach(ni => ni.classList.remove('active'));
-            item.classList.add('active');
-        });
+            // Only add event listeners for single-page app links (no real href)
+            if (!href || href === '#' || href.startsWith('javascript:')) {
+                // Single-page app link - prevent default and use showPage
+                navLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const page = item.getAttribute('data-page');
+                    if (typeof showPage === 'function') {
+                        showPage(page);
+                    }
+                    navItems.forEach(ni => ni.classList.remove('active'));
+                    item.classList.add('active');
+                });
+            }
+            // For real links with href, NO event listener is added
+            // They will work naturally via browser navigation
+        }
     });
 
     // Profile dropdown
@@ -379,6 +401,11 @@ function handleLogout() {
 // ============================================
 
 async function loadDashboardData() {
+    // Only run on dashboard page - check if dashboard elements exist
+    if (!document.getElementById('total-colleges') && !window.location.pathname.includes('/dashboard')) {
+        return; // Not on dashboard page, exit early
+    }
+    
     showLoading();
     try {
         // Load overview statistics
@@ -387,8 +414,15 @@ async function loadDashboardData() {
         
         if (overview) {
             updateAnalyticsCards(overview);
-            updateRecentColleges(overview.recent_colleges || []);
-            initializeCharts(overview);
+            // Only update these if elements exist (dashboard page only)
+            const recentTbody = document.getElementById('recent-colleges-tbody');
+            if (recentTbody) {
+                updateRecentColleges(overview.recent_colleges || []);
+            }
+            // Only initialize charts if chart containers exist
+            if (typeof initializeCharts === 'function' && document.querySelector('.chart-container')) {
+                initializeCharts(overview);
+            }
         } else {
             // Mock data for demonstration
             const mockData = {
@@ -413,13 +447,32 @@ async function loadDashboardData() {
 }
 
 function updateAnalyticsCards(data) {
-    document.getElementById('total-colleges').textContent = formatNumber(data.total_colleges || 0);
-    document.getElementById('total-students').textContent = formatNumber(data.total_students || 0);
-    document.getElementById('total-lecturers').textContent = formatNumber(data.total_lecturers || 0);
-    document.getElementById('total-departments').textContent = formatNumber(data.total_departments || 0);
-    document.getElementById('active-colleges').textContent = formatNumber(data.active_colleges || 0);
-    document.getElementById('suspended-colleges').textContent = formatNumber(data.suspended_colleges || 0);
-    document.getElementById('colleges-change').textContent = `${data.colleges_change || 0} this month`;
+    // Safely update elements only if they exist (dashboard page only)
+    // Exit early if we're not on the dashboard page
+    if (!document.getElementById('total-colleges') && !window.location.pathname.includes('/dashboard')) {
+        return; // Not on dashboard page, exit early
+    }
+    
+    const elements = {
+        'total-colleges': formatNumber(data.total_colleges || 0),
+        'total-students': formatNumber(data.total_students || 0),
+        'total-lecturers': formatNumber(data.total_lecturers || 0),
+        'total-departments': formatNumber(data.total_departments || 0),
+        'active-colleges': formatNumber(data.active_colleges || 0),
+        'suspended-colleges': formatNumber(data.suspended_colleges || 0),
+        'colleges-change': `${data.colleges_change || 0} this month`
+    };
+    
+    for (const [id, value] of Object.entries(elements)) {
+        const element = document.getElementById(id);
+        if (element && element.textContent !== undefined) {
+            try {
+                element.textContent = value;
+            } catch (e) {
+                console.warn(`Could not update element ${id}:`, e);
+            }
+        }
+    }
 }
 
 function updateRecentColleges(colleges) {
