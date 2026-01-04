@@ -15971,8 +15971,8 @@
                                                         <i class="fas fa-edit"></i>
                                                     </button>
                                                     <button class="btn btn-sm btn-danger" onclick="deleteCourseUnit(${unit.id}, event)" style="padding: 4px 8px; font-size: 12px; min-width: auto;" title="Delete">
-                                                        <i class="fas fa-trash"></i>
-                                                    </button>
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
                                                 </div>
                                             ` : ''}
                                         </div>
@@ -16311,7 +16311,7 @@
                             successCount++;
                         } else {
                             const errorData = await response.json().catch(() => ({}));
-                            errorCount++;
+                                errorCount++;
                             if (errorData.error) {
                                 errorMessages.push(errorData.error);
                             } else {
@@ -16492,7 +16492,7 @@
                     section.classList.remove('force-show');
                 }
             });
-            
+
             // Explicitly hide department overview section again (triple check)
             if (departmentOverviewSection && sectionId !== 'department-overview-section') {
                 departmentOverviewSection.style.display = 'none';
@@ -16502,9 +16502,9 @@
 
             // Show target section (only if it's not the department overview)
             if (sectionId !== 'department-overview-section') {
-                const targetSection = document.getElementById(sectionId);
-                if (targetSection) {
-                    targetSection.classList.add('active');
+            const targetSection = document.getElementById(sectionId);
+            if (targetSection) {
+                targetSection.classList.add('active');
                 }
             }
 

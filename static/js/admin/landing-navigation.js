@@ -47,9 +47,9 @@
 
                     // Show target section (only if it's not the department overview)
                     if (targetSectionId !== 'department-overview-section') {
-                        const targetSection = document.getElementById(targetSectionId);
-                        if (targetSection) {
-                            targetSection.classList.add('active');
+                    const targetSection = document.getElementById(targetSectionId);
+                    if (targetSection) {
+                        targetSection.classList.add('active');
                         }
                     }
 

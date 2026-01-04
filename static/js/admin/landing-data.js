@@ -1467,8 +1467,8 @@
                                               onmouseover="this.style.backgroundColor='var(--primary-color, #3b82f6)'; this.style.color='white';"
                                               onmouseout="this.style.backgroundColor=''; this.style.color='';"
                                               title="Click to view course overview">
-                                            ${courseCount} ${courseCount === 1 ? 'course' : 'courses'}
-                                        </span>
+                                        ${courseCount} ${courseCount === 1 ? 'course' : 'courses'}
+                                    </span>
                                     ` : `
                                         <span class="badge badge-info" style="font-size: 0.75em; padding: 4px 8px; opacity: 0.5;">
                                             0 courses
