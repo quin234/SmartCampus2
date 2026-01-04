@@ -347,6 +347,7 @@ class GlobalCourseUnit(models.Model):
 class CollegeCourse(models.Model):
     """College-specific courses"""
     college = models.ForeignKey(College, on_delete=models.CASCADE, related_name='courses')
+    department = models.ForeignKey('accounts.Department', on_delete=models.PROTECT, related_name='courses', null=False, help_text="Department is required")
     global_course = models.ForeignKey(GlobalCourse, on_delete=models.SET_NULL, null=True, blank=True, related_name='college_instances')
     code = models.CharField(max_length=50, help_text="Course code (e.g., CS101)")
     name = models.CharField(max_length=200)
@@ -362,12 +363,15 @@ class CollegeCourse(models.Model):
             models.Index(fields=['college', 'name']),  # For search queries
             models.Index(fields=['college', 'code']),  # For code lookups
             models.Index(fields=['college', 'global_course']),  # For global course filtering
+            models.Index(fields=['college', 'department']),  # For department filtering
         ]
     
     def save(self, *args, **kwargs):
-        # Ensure code is uppercase
+        # Ensure code and name are uppercase
         if self.code:
             self.code = self.code.upper()
+        if self.name:
+            self.name = self.name.upper()
         super().save(*args, **kwargs)
     
     def __str__(self):
@@ -401,6 +405,14 @@ class CollegeUnit(models.Model):
             models.Index(fields=['college', 'semester']),  # For semester filtering
             models.Index(fields=['college', 'code']),  # For code searches
         ]
+    
+    def save(self, *args, **kwargs):
+        # Ensure code and name are uppercase
+        if self.code:
+            self.code = self.code.upper()
+        if self.name:
+            self.name = self.name.upper()
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"{self.college.name} - {self.code} ({self.name})"
@@ -507,6 +519,10 @@ class Student(models.Model):
     
     def save(self, *args, **kwargs):
         """Override save to automatically generate invoice for new students or when course is added"""
+        # Ensure admission_number is uppercase
+        if self.admission_number:
+            self.admission_number = self.admission_number.upper()
+        
         is_new = self.pk is None
         
         # Track if course was just added (for existing students)

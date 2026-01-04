@@ -6,9 +6,10 @@ from education.models import Student, CollegeCourse, College
 
 
 class DepartmentForm(forms.ModelForm):
+    """Form for Department - only includes actual database fields"""
     class Meta:
         model = Department
-        fields = ['department_name']
+        fields = ['department_name']  # Only actual database field
         widgets = {
             'department_name': forms.TextInput(attrs={
                 'class': 'form-control',
@@ -16,25 +17,12 @@ class DepartmentForm(forms.ModelForm):
             })
         }
 
-
-    def clean_academic_year(self):
-        academic_year = self.cleaned_data.get('academic_year')
-        if academic_year:
-            import re
-            pattern = r'^\d{4}/\d{4}$'
-            if not re.match(pattern, academic_year):
-                raise ValidationError('Academic year must be in format YYYY/YYYY (e.g., 2024/2025)')
-            
-            try:
-                year1, year2 = academic_year.split('/')
-                year1_int = int(year1)
-                year2_int = int(year2)
-                if year2_int != year1_int + 1:
-                    raise ValidationError('Academic year second part must be one year after the first')
-            except ValueError:
-                raise ValidationError('Invalid academic year format')
-        
-        return academic_year
+    def clean_department_name(self):
+        """Validate department name and convert to uppercase"""
+        department_name = self.cleaned_data.get('department_name', '').strip().upper()
+        if not department_name:
+            raise ValidationError('Department name is required.')
+        return department_name
 
 
 class FeeStructureForm(forms.ModelForm):

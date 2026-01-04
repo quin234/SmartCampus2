@@ -29,8 +29,11 @@ urlpatterns = [
     # Accessible at /django-admin/ (uses separate Django admin login template)
     path('django-admin/', admin.site.urls),
     
-    # Landing page at root
-    path('', views.landing_page, name='landing'),
+    # Landing page at root - College Registration
+    path('', views.college_registration_landing, name='college_registration_landing'),
+    
+    # Previous landing page (commented out - kept for reference)
+    # path('', views.landing_page, name='landing'),
     
     # Registration API
     path('api/schools/register', views.register_school, name='register_school'),

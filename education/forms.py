@@ -111,6 +111,11 @@ class StudentForm(forms.ModelForm):
         self.fields['sponsorship_discount_type'].required = False
         self.fields['sponsorship_discount_value'].required = False
     
+    def clean_admission_number(self):
+        """Convert admission number to uppercase"""
+        admission_number = self.cleaned_data.get('admission_number', '').strip().upper()
+        return admission_number
+    
     def clean(self):
         cleaned_data = super().clean()
         course = cleaned_data.get('course')
@@ -165,8 +170,9 @@ class CollegeCourseForm(forms.ModelForm):
     """Form for college course"""
     class Meta:
         model = CollegeCourse
-        fields = ['global_course', 'code', 'name', 'duration_years', 'admission_requirements']
+        fields = ['department', 'global_course', 'code', 'name', 'duration_years', 'admission_requirements']
         widgets = {
+            'department': forms.Select(attrs={'class': 'form-input'}),
             'global_course': forms.Select(attrs={'class': 'form-input'}),
             'code': forms.TextInput(attrs={'class': 'form-input', 'style': 'text-transform: uppercase;'}),
             'name': forms.TextInput(attrs={'class': 'form-input'}),
@@ -175,7 +181,16 @@ class CollegeCourseForm(forms.ModelForm):
         }
     
     def __init__(self, *args, **kwargs):
+        college = kwargs.pop('college', None)
         super().__init__(*args, **kwargs)
+        
+        # Department is required - filter by college
+        if college:
+            from accounts.models import Department
+            self.fields['department'].queryset = Department.objects.filter(college=college).order_by('department_name')
+            self.fields['department'].empty_label = '-- Select Department (Required) --'
+        self.fields['department'].required = True
+        
         self.fields['global_course'].required = False
         self.fields['global_course'].queryset = GlobalCourse.objects.all()
         self.fields['global_course'].empty_label = '-- Select Global Course (Optional) --'
@@ -184,6 +199,17 @@ class CollegeCourseForm(forms.ModelForm):
     def clean_code(self):
         code = self.cleaned_data.get('code', '').strip().upper()
         return code
+    
+    def clean_name(self):
+        """Convert course name to uppercase"""
+        name = self.cleaned_data.get('name', '').strip().upper()
+        return name
+    
+    def clean_department(self):
+        department = self.cleaned_data.get('department')
+        if not department:
+            raise forms.ValidationError('Department is required. Please select a department.')
+        return department
 
 
 class CollegeUnitForm(forms.ModelForm):
@@ -215,6 +241,16 @@ class CollegeUnitForm(forms.ModelForm):
         else:
             # Default to 2 semesters if college not provided
             self.fields['semester'].choices = [(1, 'Semester 1'), (2, 'Semester 2')]
+    
+    def clean_code(self):
+        """Convert unit code to uppercase"""
+        code = self.cleaned_data.get('code', '').strip().upper()
+        return code
+    
+    def clean_name(self):
+        """Convert unit name to uppercase"""
+        name = self.cleaned_data.get('name', '').strip().upper()
+        return name
 
 
 class EnrollmentForm(forms.ModelForm):

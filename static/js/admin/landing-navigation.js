@@ -27,15 +27,30 @@
                 const targetSectionId = this.getAttribute('data-section');
                 
                 if (targetSectionId) {
+                    // ALWAYS hide department overview section first
+                    const departmentOverviewSection = document.getElementById('department-overview-section');
+                    if (departmentOverviewSection) {
+                        departmentOverviewSection.style.display = 'none';
+                        departmentOverviewSection.classList.remove('active');
+                        departmentOverviewSection.classList.remove('force-show');
+                    }
+                    
                     // Hide all sections
                     sections.forEach(function(section) {
                         section.classList.remove('active');
+                        // Ensure department overview section is always hidden
+                        if (section.id === 'department-overview-section') {
+                            section.style.display = 'none';
+                            section.classList.remove('force-show');
+                        }
                     });
 
-                    // Show target section
-                    const targetSection = document.getElementById(targetSectionId);
-                    if (targetSection) {
-                        targetSection.classList.add('active');
+                    // Show target section (only if it's not the department overview)
+                    if (targetSectionId !== 'department-overview-section') {
+                        const targetSection = document.getElementById(targetSectionId);
+                        if (targetSection) {
+                            targetSection.classList.add('active');
+                        }
                     }
 
                     // Update active state in sidebar

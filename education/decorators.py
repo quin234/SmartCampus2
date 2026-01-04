@@ -326,7 +326,20 @@ def college_admin_required_for_fee_structure(view_func):
             return redirect('superadmin:dashboard')
         
         if not request.user.can_manage_fee_structure():
-            raise PermissionDenied("Director or College Admin access required to manage fee structure.")
+            from django.contrib import messages
+            from django.shortcuts import redirect
+            from django.http import JsonResponse
+            
+            # Check if this is an AJAX/JSON request
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/json':
+                return JsonResponse({
+                    'error': 'Access Denied: You do not have permission to manage fee structure. Only Directors and College Administrators can access this feature.',
+                    'permission_denied': True
+                }, status=403)
+            
+            # For regular requests, show message and redirect
+            messages.error(request, 'Access Denied: You do not have permission to manage fee structure. Only Directors and College Administrators can access this feature.')
+            return redirect('accounts:dashboard')
         
         return view_func(request, *args, **kwargs)
     return wrapper

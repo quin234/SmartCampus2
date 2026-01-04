@@ -7,15 +7,24 @@
 {% block page_subtitle %}Create and manage daily expenditure entries (Draft Mode){% endblock %}
 
 {% block header_actions %}
-<div style="display: flex; gap: 12px; align-items: center;">
-    <div style="background: var(--light-color); padding: 8px 16px; border-radius: 6px; font-weight: 600; color: var(--primary-color);">
+<div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+    <!-- Previous Records Button -->
+    <button type="button" class="btn btn-secondary" id="previous-records-btn" style="display: flex; align-items: center; gap: 8px; border-radius: 8px;">
+        <i class="fas fa-history"></i> Previous Records
+    </button>
+    
+    <div style="background: var(--light-color); padding: 8px 16px; border-radius: 8px; font-weight: 600; color: var(--primary-color);">
         <i class="fas fa-calendar-day"></i> {{ today|date:"F d, Y" }}
     </div>
-    <div style="background: var(--success-color); color: white; padding: 8px 16px; border-radius: 6px; font-weight: 600;">
-        <i class="fas fa-coins"></i> Total: KES {{ draft_total|floatformat:2 }}
+    
+    {% if draft_total > 0 %}
+    <div style="background: var(--warning-color); color: white; padding: 8px 16px; border-radius: 8px; font-weight: 600;">
+        <i class="fas fa-edit"></i> Drafts: KES {{ draft_total|floatformat:2 }}
     </div>
+    {% endif %}
+    
     {% if today_drafts %}
-    <button type="button" class="btn btn-primary" id="submit-btn" style="display: flex; align-items: center; gap: 8px;">
+    <button type="button" class="btn btn-primary" id="submit-btn" style="display: flex; align-items: center; gap: 8px; border-radius: 8px;">
         <i class="fas fa-paper-plane"></i> Submit All
     </button>
     {% endif %}
@@ -35,6 +44,7 @@
         <div class="card-body">
             <form method="post" id="expenditure-form">
                 {% csrf_token %}
+                <input type="hidden" name="date" value="{{ today|date:'Y-m-d' }}">
                 
                 <div class="form-group">
                     <label for="{{ form.description.id_for_label }}">
@@ -81,13 +91,13 @@
     <div class="card">
         <div class="card-header">
             <h3 class="card-title">
-                <i class="fas fa-list"></i> Today's Draft Entries
+                <i class="fas fa-edit"></i> Today's Draft Entries
                 <span class="badge" style="background: var(--warning-color); color: white; margin-left: 8px;">
                     {{ today_drafts|length }}
                 </span>
             </h3>
         </div>
-        <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+        <div class="card-body" style="max-height: 400px; overflow-y: auto;">
             {% if today_drafts %}
             <div class="table-responsive">
                 <table class="data-table">
@@ -134,6 +144,58 @@
             {% endif %}
         </div>
     </div>
+    
+</div>
+
+<!-- Previous Records Modal -->
+<div id="previous-records-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-history"></i> View Previous Records</h3>
+            <button type="button" class="modal-close" onclick="closePreviousRecordsModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+            <!-- Datepicker Section -->
+            <div style="margin-bottom: 20px;">
+                <div class="form-group">
+                    <label for="record-date-select" class="form-label" style="font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+                        <i class="fas fa-calendar-alt"></i> Select Date:
+                    </label>
+                    <input type="date" 
+                           id="record-date-select" 
+                           name="date" 
+                           class="form-control" 
+                           style="width: 100%; padding: 10px 14px; border-radius: 8px; border: 1.5px solid var(--border-color);"
+                           required>
+                    <small class="form-text" style="color: var(--text-light); margin-top: 8px; display: block;">
+                        <i class="fas fa-info-circle"></i> Select a date to view expenditure records for that day.
+                    </small>
+                </div>
+            </div>
+            
+            <!-- Double Horizontal Line Separator -->
+            <div style="margin: 24px 0; border-top: 3px double var(--border-color);"></div>
+            <div style="margin: -3px 0 24px 0; border-top: 3px double var(--border-color);"></div>
+            
+            <!-- Records Display Area -->
+            <div id="records-display-area">
+                <div id="records-loading" style="text-align: center; padding: 20px; display: none;">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 24px; color: var(--primary-color);"></i>
+                    <p style="margin-top: 12px; color: var(--text-light);">Loading records...</p>
+                </div>
+                
+                <div id="records-content">
+                    <div style="text-align: center; padding: 40px; color: var(--text-light);">
+                        <i class="fas fa-calendar-alt" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
+                        <p>Select a date to view expenditure records.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closePreviousRecordsModal()">Close</button>
+        </div>
+    </div>
 </div>
 
 <!-- Submit Confirmation Modal -->
@@ -141,7 +203,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h3><i class="fas fa-paper-plane"></i> Submit Daily Expenditure</h3>
-            <button type="button" class="modal-close" onclick="closeModal()">&times;</button>
+            <button type="button" class="modal-close" onclick="closeSubmitModal()">&times;</button>
         </div>
         <div class="modal-body">
             <p>Are you sure you want to submit all <strong>{{ today_drafts|length }}</strong> draft entr{{ today_drafts|length|pluralize:"y,ies" }}?</p>
@@ -151,7 +213,7 @@
             </p>
         </div>
         <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="button" class="btn btn-secondary" onclick="closeSubmitModal()">Cancel</button>
             <button type="button" class="btn btn-primary" id="confirm-submit-btn">
                 <i class="fas fa-check"></i> Yes, Submit
             </button>
@@ -164,6 +226,216 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Previous Records button handler
+    const previousRecordsBtn = document.getElementById('previous-records-btn');
+    const previousRecordsModal = document.getElementById('previous-records-modal');
+    const recordDateSelect = document.getElementById('record-date-select');
+    
+    if (previousRecordsBtn) {
+        previousRecordsBtn.addEventListener('click', function() {
+            previousRecordsModal.style.display = 'block';
+            // Set today's date as default if no date is selected
+            if (!recordDateSelect.value) {
+                const today = new Date().toISOString().split('T')[0];
+                recordDateSelect.value = today;
+                // Auto-load records for today
+                loadRecordsForDate(today);
+            }
+        });
+    }
+    
+    function closePreviousRecordsModal() {
+        previousRecordsModal.style.display = 'none';
+        // Reset the modal state
+        document.getElementById('records-content').innerHTML = `
+            <div style="text-align: center; padding: 40px; color: var(--text-light);">
+                <i class="fas fa-calendar-alt" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
+                <p>Select a date to view expenditure records.</p>
+            </div>
+        `;
+        recordDateSelect.value = '';
+    }
+    
+    // Auto-update records when date changes
+    if (recordDateSelect) {
+        recordDateSelect.addEventListener('change', function() {
+            const selectedDate = this.value;
+            if (selectedDate) {
+                loadRecordsForDate(selectedDate);
+            } else {
+                document.getElementById('records-content').innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--text-light);">
+                        <i class="fas fa-calendar-alt" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
+                        <p>Select a date to view expenditure records.</p>
+                    </div>
+                `;
+            }
+        });
+    }
+    
+    // Function to load records for a specific date
+    function loadRecordsForDate(date) {
+        const recordsLoading = document.getElementById('records-loading');
+        const recordsContent = document.getElementById('records-content');
+        
+        // Show loading state
+        recordsLoading.style.display = 'block';
+        recordsContent.innerHTML = '';
+        
+        // Fetch records from API
+        fetch('{% url "accounts:api_daily_expenditure_records" %}?date=' + date)
+            .then(response => response.json())
+            .then(data => {
+                recordsLoading.style.display = 'none';
+                
+                if (data.success) {
+                    displayRecords(data);
+                } else {
+                    recordsContent.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: var(--error-color);">
+                            <i class="fas fa-exclamation-circle" style="font-size: 48px; margin-bottom: 16px;"></i>
+                            <p>${data.error || 'Failed to load records'}</p>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                recordsLoading.style.display = 'none';
+                recordsContent.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--error-color);">
+                        <i class="fas fa-exclamation-circle" style="font-size: 48px; margin-bottom: 16px;"></i>
+                        <p>An error occurred while loading records.</p>
+                    </div>
+                `;
+                console.error('Error loading records:', error);
+            });
+    }
+    
+    // Function to display records in the modal
+    function displayRecords(data) {
+        const recordsContent = document.getElementById('records-content');
+        let html = '';
+        
+        // Display Draft Entries
+        if (data.drafts.length > 0) {
+            html += `
+                <div style="margin-bottom: 24px;">
+                    <h5 style="color: var(--warning-color); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-edit"></i> Draft Entries (${data.draft_count})
+                        <span style="font-size: 14px; font-weight: normal; color: var(--text-light); margin-left: auto;">
+                            Total: KES ${parseFloat(data.draft_total).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        </span>
+                    </h5>
+                    <div class="table-responsive">
+                        <table class="data-table" style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Description</th>
+                                    <th>Amount</th>
+                                    <th>Entered By</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+            
+            data.drafts.forEach(draft => {
+                html += `
+                    <tr>
+                        <td>${draft.description}</td>
+                        <td><strong>KES ${parseFloat(draft.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></td>
+                        <td>
+                            <span class="badge" style="background: var(--info-color); color: white; font-size: 11px; padding: 4px 8px;">${draft.role}</span>
+                            <br>
+                            <small style="color: var(--text-light); font-size: 12px;">${draft.entered_by}</small>
+                        </td>
+                        <td>${draft.created_at}</td>
+                    </tr>`;
+            });
+            
+            html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+        } else {
+            html += `
+                <div style="text-align: center; padding: 20px; color: var(--text-light); margin-bottom: 24px;">
+                    <i class="fas fa-inbox" style="font-size: 32px; margin-bottom: 8px; opacity: 0.3;"></i>
+                    <p>No draft entries for this date.</p>
+                </div>`;
+        }
+        
+        // Display Submitted Entries
+        if (data.submitted.length > 0) {
+            html += `
+                <div style="margin-bottom: 24px;">
+                    <h5 style="color: var(--success-color); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-check-circle"></i> Submitted Entries (${data.submitted_count})
+                        <span style="font-size: 12px; color: var(--text-light); margin-left: 8px;">
+                            <i class="fas fa-lock"></i> Read-Only
+                        </span>
+                        <span style="font-size: 14px; font-weight: normal; color: var(--text-light); margin-left: auto;">
+                            Total: KES ${parseFloat(data.submitted_total).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        </span>
+                    </h5>
+                    <div class="table-responsive">
+                        <table class="data-table" style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Description</th>
+                                    <th>Amount</th>
+                                    <th>Entered By</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+            
+            data.submitted.forEach(entry => {
+                html += `
+                    <tr style="opacity: 0.85; background-color: rgba(0, 0, 0, 0.02);">
+                        <td style="color: var(--text-color);">${entry.description}</td>
+                        <td><strong style="color: var(--text-color);">KES ${parseFloat(entry.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></td>
+                        <td>
+                            <span class="badge" style="background: var(--info-color); color: white; font-size: 11px; padding: 4px 8px;">${entry.role}</span>
+                            <br>
+                            <small style="color: var(--text-light); font-size: 12px;">${entry.entered_by}</small>
+                        </td>
+                        <td style="color: var(--text-color);">${entry.created_at}</td>
+                    </tr>`;
+            });
+            
+            html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+        } else {
+            html += `
+                <div style="text-align: center; padding: 20px; color: var(--text-light);">
+                    <i class="fas fa-inbox" style="font-size: 32px; margin-bottom: 8px; opacity: 0.3;"></i>
+                    <p>No submitted entries for this date.</p>
+                </div>`;
+        }
+        
+        // Show message if no records at all
+        if (data.drafts.length === 0 && data.submitted.length === 0) {
+            html = `
+                <div style="text-align: center; padding: 40px; color: var(--text-light);">
+                    <i class="fas fa-inbox" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
+                    <p>No expenditure records found for ${data.date_display}.</p>
+                </div>`;
+        }
+        
+        recordsContent.innerHTML = html;
+    }
+    
+    // Close previous records modal on outside click
+    window.addEventListener('click', function(event) {
+        if (event.target == previousRecordsModal) {
+            closePreviousRecordsModal();
+        }
+    });
+    
     // Submit button handler
     const submitBtn = document.getElementById('submit-btn');
     const confirmSubmitBtn = document.getElementById('confirm-submit-btn');
@@ -175,16 +447,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    function closeModal() {
+    function closeSubmitModal() {
         submitModal.style.display = 'none';
     }
     
-    // Close modal on outside click
-    window.onclick = function(event) {
+    // Close submit modal on outside click
+    window.addEventListener('click', function(event) {
         if (event.target == submitModal) {
-            closeModal();
+            closeSubmitModal();
         }
-    }
+    })
     
     // Confirm submit
     if (confirmSubmitBtn) {
@@ -203,6 +475,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
+                    // Reload page
                     window.location.reload();
                 } else {
                     alert('Error: ' + (data.error || 'Failed to submit'));
@@ -271,11 +544,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .modal-content {
     background-color: var(--bg-card);
-    margin: 10% auto;
+    margin: 5% auto;
     padding: 0;
-    border-radius: 8px;
-    width: 90%;
-    max-width: 500px;
+    border-radius: 12px;
+    width: 95%;
+    max-width: 900px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 

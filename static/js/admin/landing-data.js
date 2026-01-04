@@ -1460,9 +1460,20 @@
                                 <div style="flex: 1; display: flex; align-items: center; gap: 12px;">
                                     <strong style="color: var(--text-color, #1f2937);">${dept.code || '-'}</strong>
                                     <span style="color: var(--text-color, #1f2937);">${dept.name || '-'}</span>
-                                    <span class="badge badge-info" style="font-size: 0.75em; padding: 4px 8px;">
-                                        ${courseCount} ${courseCount === 1 ? 'course' : 'courses'}
-                                    </span>
+                                    ${courseCount > 0 ? `
+                                        <span class="badge badge-info" 
+                                              style="font-size: 0.75em; padding: 4px 8px; cursor: pointer; transition: all 0.2s ease;" 
+                                              onclick="event.stopPropagation(); viewDepartmentCourses(${dept.id}, '${(dept.name || '').replace(/'/g, "&#39;")}')"
+                                              onmouseover="this.style.backgroundColor='var(--primary-color, #3b82f6)'; this.style.color='white';"
+                                              onmouseout="this.style.backgroundColor=''; this.style.color='';"
+                                              title="Click to view course overview">
+                                            ${courseCount} ${courseCount === 1 ? 'course' : 'courses'}
+                                        </span>
+                                    ` : `
+                                        <span class="badge badge-info" style="font-size: 0.75em; padding: 4px 8px; opacity: 0.5;">
+                                            0 courses
+                                        </span>
+                                    `}
                                 </div>
                                 <div class="department-actions" onclick="event.stopPropagation();">
                                     ${isAdmin ? `
@@ -2465,10 +2476,10 @@
                     deptSelect.innerHTML = '<option value="">Select Department</option>';
                     deptData.results.forEach(dept => {
                         const option = document.createElement('option');
-                        option.value = dept.name;
-                        option.textContent = `${dept.code} - ${dept.name}`;
+                        option.value = dept.id;  // Use department ID, not name
+                        option.textContent = dept.name;  // Departments don't have codes anymore
                         // Set selected if this course belongs to this department
-                        if (course.department_name && course.department_name === dept.name) {
+                        if (course.department_id && course.department_id === dept.id) {
                             option.selected = true;
                         }
                         deptSelect.appendChild(option);
@@ -2568,11 +2579,14 @@
         const dept = state.departments.data.find(d => d.id === id);
         if (dept) {
             const form = document.getElementById('department-form');
+            if (form) {
             form.dataset.editId = id;
             form.dataset.oldName = dept.name || '';  // Store original name for identification
-            document.getElementById('department-code').value = dept.code || '';
-            document.getElementById('department-name').value = dept.name || '';
-            document.getElementById('department-description').value = dept.description || '';
+            }
+            const nameField = document.getElementById('department-name');
+            if (nameField) {
+                nameField.value = dept.name || '';
+            }
             openModal('department-modal');
         }
     };

@@ -3,88 +3,516 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Login - SmartCampus</title>
+    <title>Admin Login - College Management System</title>
     {% load static %}
-    <link rel="stylesheet" href="{% static 'css/admin/admin.css' %}">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #3e4b61;
+            color: #333;
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .page-title {
+            text-align: center;
+            font-size: 28px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 40px;
+        }
+
+        .login-form {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background-color: #fff;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+        }
+
+        .submit-button {
+            width: 100%;
+            padding: 14px;
+            background-color: #4a90e2;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            margin-top: 10px;
+        }
+
+        .submit-button:hover {
+            background-color: #357abd;
+        }
+
+        .submit-button:active {
+            transform: translateY(1px);
+        }
+
+        .submit-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            color: #dc3545;
+            font-size: 13px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .form-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            margin-top: -10px;
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .remember-me input[type="checkbox"] {
+            width: auto;
+            cursor: pointer;
+        }
+
+        .remember-me label {
+            font-size: 13px;
+            color: #666;
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .forgot-password {
+            font-size: 13px;
+            color: #4a90e2;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .forgot-password:hover {
+            color: #357abd;
+            text-decoration: underline;
+        }
+
+        .demo-container {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .demo-link {
+            display: inline-block;
+        }
+
+        .demo-link a {
+            color: #ffffff;
+            font-size: 13px;
+            text-decoration: none;
+            opacity: 0.9;
+            transition: opacity 0.2s;
+        }
+
+        .demo-link a:hover {
+            opacity: 1;
+            text-decoration: underline;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+        }
+
+        /* Modal Styles - Floating Dialog */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        body.modal-open {
+            overflow: hidden;
+        }
+
+        .modal-content {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 0;
+            max-width: 550px;
+            width: 90%;
+            max-height: 85vh;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.1);
+            transform: scale(0.9) translateY(-20px);
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            opacity: 0;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-overlay.show .modal-content {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+        }
+
+        .modal-body {
+            padding: 30px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .role-list {
+            list-style: none;
+        }
+
+        .role-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .role-item:hover {
+            background-color: #f5f5f5;
+            border-color: #4a90e2;
+        }
+
+        .role-name {
+            font-weight: 600;
+            font-size: 16px;
+            color: #1a1a1a;
+            margin-bottom: 10px;
+        }
+
+        .role-credentials {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .credential-field {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .credential-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+
+        .credential-input {
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            background-color: #f9f9f9;
+            color: #333;
+            cursor: not-allowed;
+        }
+
+        .close-modal {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(0, 0, 0, 0.05);
+            border: none;
+            font-size: 22px;
+            color: #666;
+            cursor: pointer;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+            z-index: 10;
+        }
+
+        .close-modal:hover {
+            background-color: rgba(0, 0, 0, 0.1);
+            color: #333;
+            transform: rotate(90deg);
+        }
+    </style>
 </head>
-<body class="login-page">
-    <div class="login-container">
-        <div class="login-card">
-            <!-- Logo Section -->
-            <div class="login-header">
-                <div class="logo-container">
-                    <i class="fas fa-graduation-cap"></i>
-                    <h1>SmartCampus</h1>
-                </div>
-                <p class="login-subtitle">College Management Admin Portal</p>
-            </div>
-
-            <!-- Error/Success Messages -->
-            <div id="error-message" class="error-message" style="display: none;"></div>
-            <div id="success-message" class="success-message" style="display: none;"></div>
-
-            <!-- Login Form -->
+<body>
+    <div class="container">
+        <h1 class="page-title">COLLEGE MANAGEMENT SYSTEM</h1>
+        
             <form id="login-form" class="login-form" method="post" action="{% url 'admin_login' %}">
                 {% csrf_token %}
+            
+            {% if error %}
+            <div class="error-message show">{{ error }}</div>
+            {% endif %}
+            
                 <div class="form-group">
-                    <label for="username" class="form-label">
-                        <i class="fas fa-user"></i> Username or Email
-                    </label>
-                    <input 
-                        type="text" 
-                        id="username" 
-                        name="username" 
-                        class="form-input" 
-                        placeholder="Enter your username or email"
-                        required
-                        autofocus
-                    >
+                <label for="username">Username or Email</label>
+                <input type="text" id="username" name="username" placeholder="Enter username or email" required autofocus>
                 </div>
 
                 <div class="form-group">
-                    <label for="password" class="form-label">
-                        <i class="fas fa-lock"></i> Password
-                    </label>
-                    <div class="password-input-wrapper">
-                        <input 
-                            type="password" 
-                            id="password" 
-                            name="password" 
-                            class="form-input" 
-                            placeholder="Enter your password"
-                            required
-                        >
-                        <button type="button" class="password-toggle" id="password-toggle">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                    </div>
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="Enter password" required>
                 </div>
 
                 <div class="form-options">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="remember-me" name="remember_me">
-                        <span>Remember me</span>
-                    </label>
+                <div class="remember-me">
+                    <input type="checkbox" id="remember_me" name="remember_me">
+                    <label for="remember_me">Remember me</label>
+                </div>
                     <a href="{% url 'password_reset_request' %}" class="forgot-password">Forgot Password?</a>
                 </div>
 
-                <button type="submit" class="btn-login" id="login-btn">
-                    <span class="btn-text">Sign In</span>
-                    <span class="btn-loader" style="display: none;">
-                        <i class="fas fa-spinner fa-spin"></i> Signing in...
-                    </span>
-                </button>
+            <button type="submit" class="submit-button" id="submit-btn">Sign In</button>
             </form>
 
-            <!-- Footer -->
-            <div class="login-footer">
-                <p>&copy; 2025 SmartCampus. All rights reserved.</p>
+        <div class="demo-container">
+            <div class="demo-link">
+                <a href="#" id="demo-link">Demo</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2025 College Management System. All rights reserved.</p>
+        </div>
+    </div>
+
+    <!-- Demo Modal - Floating Dialog -->
+    <div class="modal-overlay" id="demo-modal">
+        <div class="modal-content">
+            <button class="close-modal" id="close-modal">&times;</button>
+            <div class="modal-body">
+                <div class="modal-header">
+                    <h2 class="modal-title">Demo Access</h2>
+                </div>
+                <ul class="role-list">
+                <li class="role-item" data-role="director">
+                    <div class="role-name">Director</div>
+                    <div class="role-credentials">
+                        <div class="credential-field">
+                            <span class="credential-label">Username</span>
+                            <input type="text" class="credential-input" value="director" readonly>
+                        </div>
+                        <div class="credential-field">
+                            <span class="credential-label">Password</span>
+                            <input type="text" class="credential-input" value="director123" readonly>
+                        </div>
+                    </div>
+                </li>
+                <li class="role-item" data-role="principal">
+                    <div class="role-name">Principal</div>
+                    <div class="role-credentials">
+                        <div class="credential-field">
+                            <span class="credential-label">Username</span>
+                            <input type="text" class="credential-input" value="principal" readonly>
+                        </div>
+                        <div class="credential-field">
+                            <span class="credential-label">Password</span>
+                            <input type="text" class="credential-input" value="principal123" readonly>
+                        </div>
+                    </div>
+                </li>
+                <li class="role-item" data-role="registrar">
+                    <div class="role-name">Registrar</div>
+                    <div class="role-credentials">
+                        <div class="credential-field">
+                            <span class="credential-label">Username</span>
+                            <input type="text" class="credential-input" value="registrar" readonly>
+                        </div>
+                        <div class="credential-field">
+                            <span class="credential-label">Password</span>
+                            <input type="text" class="credential-input" value="registrar123" readonly>
+                        </div>
+                    </div>
+                </li>
+                <li class="role-item" data-role="accounts">
+                    <div class="role-name">Accounts</div>
+                    <div class="role-credentials">
+                        <div class="credential-field">
+                            <span class="credential-label">Username</span>
+                            <input type="text" class="credential-input" value="accounts" readonly>
+                        </div>
+                        <div class="credential-field">
+                            <span class="credential-label">Password</span>
+                            <input type="text" class="credential-input" value="accounts123" readonly>
+                        </div>
+                    </div>
+                </li>
+                <li class="role-item" data-role="lecturer">
+                    <div class="role-name">Lecturer</div>
+                    <div class="role-credentials">
+                        <div class="credential-field">
+                            <span class="credential-label">Username</span>
+                            <input type="text" class="credential-input" value="lecturer" readonly>
+                        </div>
+                        <div class="credential-field">
+                            <span class="credential-label">Password</span>
+                            <input type="text" class="credential-input" value="lecturer123" readonly>
+                        </div>
+                    </div>
+                </li>
+                </ul>
             </div>
         </div>
     </div>
 
-    <script src="{% static 'js/admin/admin.js' %}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const demoLink = document.getElementById('demo-link');
+            const demoModal = document.getElementById('demo-modal');
+            const closeModal = document.getElementById('close-modal');
+            const roleItems = document.querySelectorAll('.role-item');
+            const loginForm = document.getElementById('login-form');
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+
+            // Open modal
+            demoLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                demoModal.classList.add('show');
+                document.body.classList.add('modal-open');
+            });
+
+            // Close modal function
+            function closeModalDialog() {
+                demoModal.classList.remove('show');
+                document.body.classList.remove('modal-open');
+            }
+
+            // Close modal
+            closeModal.addEventListener('click', closeModalDialog);
+
+            // Close modal when clicking outside
+            demoModal.addEventListener('click', function(e) {
+                if (e.target === demoModal) {
+                    closeModalDialog();
+                }
+            });
+
+            // Close modal on Escape key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && demoModal.classList.contains('show')) {
+                    closeModalDialog();
+                }
+            });
+
+            // Handle role selection and auto-login
+            roleItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    const username = this.querySelector('.credential-field:first-child .credential-input').value;
+                    const password = this.querySelector('.credential-field:last-child .credential-input').value;
+                    
+                    // Fill form
+                    usernameInput.value = username;
+                    passwordInput.value = password;
+                    
+                    // Close modal
+                    demoModal.classList.remove('show');
+                    
+                    // Submit form
+                    loginForm.submit();
+                });
+            });
+        });
+    </script>
 </body>
 </html>
-

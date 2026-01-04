@@ -10,6 +10,8 @@ urlpatterns = [
     # Departments
     path('departments/', views.department_list, name='department_list'),
     path('departments/create/', views.department_create, name='department_create'),
+    path('departments/<int:pk>/edit/', views.department_edit, name='department_edit'),
+    path('departments/<int:pk>/delete/', views.department_delete, name='department_delete'),
     
     
     # Fee Structure
@@ -28,6 +30,9 @@ urlpatterns = [
     path('payments/', views.payment_list, name='payment_list'),
     path('payments/create/', views.payment_create, name='payment_create'),
     path('payments/<int:pk>/', views.payment_detail, name='payment_detail'),
+    # API endpoints
+    path('api/students/<int:student_id>/pending-invoices/', views.api_student_pending_invoices, name='api_student_pending_invoices'),
+    path('api/daily-expenditure/records/', views.api_daily_expenditure_records, name='api_daily_expenditure_records'),
     
     # Reports
     path('reports/balances/', views.balance_report, name='balance_report'),

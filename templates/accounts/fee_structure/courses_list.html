@@ -68,9 +68,15 @@
                                 {% endif %}
                             </td>
                             <td>
+                                {% if request.user.is_director %}
                                 <button class="btn btn-sm btn-primary" onclick="openFeeStructureDialog({{ course_data.course.id }}, '{{ course_data.course.name|escapejs }}')">
                                     <i class="fas fa-edit"></i> Edit Fee Structure
                                 </button>
+                                {% else %}
+                                <button class="btn btn-sm btn-secondary" disabled style="opacity: 0.6; cursor: not-allowed;" title="Only Directors can edit fee structure">
+                                    <i class="fas fa-edit"></i> Edit Fee Structure
+                                </button>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -145,9 +151,15 @@
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeFeeStructureDialog()">Cancel</button>
+            {% if request.user.is_director %}
             <button type="button" class="btn btn-primary" onclick="saveFeeStructure()">
                 <i class="fas fa-save"></i> Save Fee Structure
             </button>
+            {% else %}
+            <button type="button" class="btn btn-secondary" disabled style="opacity: 0.6; cursor: not-allowed;" title="Only Directors can save fee structure">
+                <i class="fas fa-save"></i> Save Fee Structure
+            </button>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -521,6 +533,12 @@ let currentCourseData = null;
 let currentSemesterNumber = null;
 
 function openFeeStructureDialog(courseId, courseName) {
+    // Check if user is director - prevent non-directors from opening dialog
+    {% if not request.user.is_director %}
+    alert('Access Denied: Only Directors can edit fee structure.');
+    return;
+    {% endif %}
+    
     currentCourseId = courseId;
     currentSemesterNumber = null;
     
@@ -623,6 +641,9 @@ function loadFeeStructureForSemester() {
                 data.fee_items.forEach(item => {
                     const row = document.createElement('div');
                     row.className = 'fee-item-row';
+                    const isDirector = {% if request.user.is_director %}true{% else %}false{% endif %};
+                    const inputDisabled = isDirector ? '' : 'disabled style="opacity: 0.6; cursor: not-allowed; background-color: #f5f5f5;"';
+                    
                     row.innerHTML = `
                         <div class="fee-item-info">
                             <div class="fee-item-name">${escapeHtml(item.name)}</div>
@@ -638,6 +659,7 @@ function loadFeeStructureForSemester() {
                                 placeholder="0.00"
                                 required
                                 oninput="calculateTotal()"
+                                ${inputDisabled}
                             />
                         </div>
                     `;

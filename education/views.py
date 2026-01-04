@@ -68,6 +68,20 @@ def server_error_view(request):
     }, status=500)
 
 
+def college_registration_landing(request):
+    """Render the college registration landing page"""
+    if request.user.is_authenticated:
+        if request.user.is_super_admin():
+            return redirect('superadmin:dashboard')
+        elif request.user.is_director() and hasattr(request.user, 'college') and request.user.college:
+            return redirect('director_dashboard')
+        elif request.user.role == 'college_admin' and hasattr(request.user, 'college') and request.user.college:
+            return redirect('director_dashboard')
+        else:
+            return redirect('admin_login')
+    return render(request, 'college_register.html')
+
+
 def landing_page(request):
     """Render the landing page - redirects authenticated users appropriately"""
     if request.user.is_authenticated:
@@ -1544,16 +1558,22 @@ def course_list(request):
 @college_admin_required
 def course_create(request):
     """Create new course"""
+    college = request.user.college
+    
     if request.method == 'POST':
-        form = CollegeCourseForm(request.POST)
+        form = CollegeCourseForm(request.POST, college=college)
         if form.is_valid():
             course = form.save(commit=False)
-            course.college = request.user.college
+            course.college = college
+            # Ensure department belongs to the same college
+            if course.department.college != college:
+                messages.error(request, 'Invalid department selected.')
+                return render(request, 'education/courses/create.html', {'form': form})
             course.save()
             messages.success(request, f'Course {course.name} created successfully.')
             return redirect('course_list')
     else:
-        form = CollegeCourseForm()
+        form = CollegeCourseForm(college=college)
     
     return render(request, 'education/courses/create.html', {'form': form})
 

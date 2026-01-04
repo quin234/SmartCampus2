@@ -8,6 +8,7 @@ urlpatterns = [
     # Departments API
     path('departments/', api_views.api_departments_list, name='api_departments_list'),
     path('departments/<int:pk>/', api_views.api_department_detail, name='api_department_detail'),
+    path('departments/<int:pk>/course-overview/', api_views.api_department_course_overview, name='api_department_course_overview'),
     
     # Courses API
     path('courses/', api_views.api_courses_list, name='api_courses_list'),

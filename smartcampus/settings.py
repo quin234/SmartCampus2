@@ -97,17 +97,6 @@ WSGI_APPLICATION = 'smartcampus.wsgi.application'
 #     }
 # }
 
-# SQLite Database Configuration (for development) - Commented out, using MySQL instead
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'smartcampus_db',
-#         # Connection pooling for SQLite (limited support)
-#         'OPTIONS': {
-#             'timeout': 20,
-#         },
-#     }
-# }
 
 # MySQL Database Configuration
 DATABASES = {

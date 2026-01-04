@@ -85,6 +85,205 @@ def generate_student_invoice(student, semester_number, academic_year=None, creat
     return invoice
 
 
+def process_payment_with_invoice_linking(student, amount_paid, payment_method, transaction_code=None, 
+                                        semester_number=None, academic_year=None, date_paid=None, 
+                                        notes=None, recorded_by=None):
+    """
+    Process a payment by automatically linking it to invoices.
+    
+    Rules:
+    1. Payments must be linked to invoices
+    2. Previous semester balances must be paid before current semester
+    3. Auto-generate invoices if student is enrolled (but not for future semesters)
+    4. Excess payments are automatically applied to next pending invoices
+    5. Payments are allocated to oldest outstanding invoices first
+    
+    Returns:
+        dict with keys:
+            - success: bool
+            - message: str
+            - payments: list of Payment objects created
+            - warnings: list of warning messages
+            - errors: list of error messages
+    """
+    from django.db import transaction
+    from education.models import Enrollment
+    
+    result = {
+        'success': False,
+        'message': '',
+        'payments': [],
+        'warnings': [],
+        'errors': []
+    }
+    
+    if not student.course:
+        result['errors'].append('Student must have a course assigned to process payments.')
+        return result
+    
+    # Get current academic year if not provided
+    if not academic_year:
+        academic_year = student.college.current_academic_year
+        if not academic_year:
+            current_year = timezone.now().year
+            academic_year = f"{current_year}/{current_year + 1}"
+    
+    # Determine target semester if not provided
+    if not semester_number:
+        # Use student's current course semester
+        semester_number = student.get_course_semester_number()
+        if not semester_number:
+            result['errors'].append('Could not determine semester number. Please specify manually.')
+            return result
+    
+    # Get all pending/partial invoices ordered by semester (oldest first)
+    pending_invoices = StudentInvoice.objects.filter(
+        student=student,
+        status__in=['pending', 'partial', 'overdue']
+    ).order_by('semester_number', 'date_created')
+    
+    # Check if there are unpaid previous semester invoices
+    previous_unpaid = pending_invoices.filter(semester_number__lt=semester_number)
+    if previous_unpaid.exists():
+        unpaid_semesters = list(previous_unpaid.values_list('semester_number', flat=True).distinct())
+        result['errors'].append(
+            f'Cannot record payment for Semester {semester_number}. '
+            f'Previous semester invoices are unpaid: {", ".join(map(str, unpaid_semesters))}. '
+            f'Please settle previous balances first.'
+        )
+        return result
+    
+    # Check if invoice exists for target semester
+    target_invoice = StudentInvoice.objects.filter(
+        student=student,
+        semester_number=semester_number
+    ).first()
+    
+    # If no invoice exists, check if student is enrolled, then auto-generate
+    if not target_invoice:
+        # Check if student has reached this course semester
+        # Student's current course semester should be >= target semester
+        student_current_semester = student.get_course_semester_number()
+        
+        # Also check if student has any enrollment in the current academic year
+        has_enrollment = Enrollment.objects.filter(
+            student=student,
+            academic_year=academic_year
+        ).exists()
+        
+        # Student is considered "enrolled" if:
+        # 1. They have reached this semester (current >= target), OR
+        # 2. They have any enrollment in the current academic year
+        is_enrolled = (student_current_semester and student_current_semester >= semester_number) or has_enrollment
+        
+        if not is_enrolled:
+            result['errors'].append(
+                f'No invoice exists for Semester {semester_number} and student is not enrolled. '
+                f'Cannot auto-generate invoice for future/unenrolled semesters. '
+                f'(Student current semester: {student_current_semester or "N/A"})'
+            )
+            return result
+        
+        # Auto-generate invoice
+        target_invoice = generate_student_invoice(
+            student=student,
+            semester_number=semester_number,
+            academic_year=academic_year,
+            created_by=recorded_by
+        )
+        
+        if not target_invoice:
+            result['errors'].append(
+                f'Could not generate invoice for Semester {semester_number}. '
+                f'No fee structure found or amount is zero.'
+            )
+            return result
+        
+        result['warnings'].append(
+            f'Auto-generated invoice {target_invoice.invoice_number} for Semester {semester_number}.'
+        )
+    
+    # Get all pending invoices including the target one, ordered by semester
+    all_pending = list(pending_invoices)
+    if target_invoice not in all_pending:
+        # Insert target invoice in correct position
+        all_pending.append(target_invoice)
+        all_pending.sort(key=lambda inv: (inv.semester_number, inv.date_created))
+    
+    # Process payment allocation
+    remaining_amount = Decimal(str(amount_paid))
+    payment_date = date_paid or timezone.now()
+    
+    try:
+        with transaction.atomic():
+            for invoice in all_pending:
+                if remaining_amount <= Decimal('0.00'):
+                    break
+                
+                invoice_balance = invoice.get_balance()
+                
+                if invoice_balance <= Decimal('0.00'):
+                    continue  # Invoice already paid, skip
+                
+                # Determine amount to apply to this invoice
+                amount_to_apply = min(remaining_amount, invoice_balance)
+                
+                # Create payment record for this invoice
+                payment = Payment.objects.create(
+                    student=student,
+                    invoice=invoice,
+                    amount_paid=amount_to_apply,
+                    payment_method=payment_method,
+                    transaction_code=transaction_code,
+                    semester_number=invoice.semester_number,
+                    academic_year=invoice.academic_year,
+                    date_paid=payment_date,
+                    notes=notes,
+                    recorded_by=recorded_by
+                )
+                
+                result['payments'].append(payment)
+                remaining_amount -= amount_to_apply
+                
+                # Update invoice status
+                invoice.update_status()
+                invoice.save()
+            
+            # If there's still remaining amount after all invoices are paid
+            if remaining_amount > Decimal('0.00'):
+                result['warnings'].append(
+                    f'Excess payment of KES {remaining_amount:,.2f} was applied to future invoices or carried forward. '
+                    f'Consider creating advance payment record.'
+                )
+                # For now, we'll create a payment without invoice link for the excess
+                # This can be applied later when new invoices are generated
+                excess_payment = Payment.objects.create(
+                    student=student,
+                    invoice=None,  # No invoice link for excess
+                    amount_paid=remaining_amount,
+                    payment_method=payment_method,
+                    transaction_code=transaction_code,
+                    semester_number=semester_number,
+                    academic_year=academic_year,
+                    date_paid=payment_date,
+                    notes=f"{notes or ''} [Excess payment - to be applied to future invoices]".strip(),
+                    recorded_by=recorded_by
+                )
+                result['payments'].append(excess_payment)
+            
+            result['success'] = True
+            if len(result['payments']) == 1:
+                result['message'] = f'Payment {result["payments"][0].receipt_number} recorded successfully and linked to invoice.'
+            else:
+                result['message'] = f'{len(result["payments"])} payment records created and allocated across invoices.'
+    
+    except Exception as e:
+        result['errors'].append(f'Error processing payment: {str(e)}')
+        return result
+    
+    return result
+
+
 class Department(models.Model):
     """Department model - linked to college"""
     college = models.ForeignKey(College, on_delete=models.CASCADE, related_name='departments')
@@ -96,6 +295,12 @@ class Department(models.Model):
         db_table = 'departments'
         unique_together = ['college', 'department_name']
         ordering = ['department_name']
+    
+    def save(self, *args, **kwargs):
+        # Ensure department_name is uppercase
+        if self.department_name:
+            self.department_name = self.department_name.upper()
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"{self.college.name} - {self.department_name}"
@@ -689,6 +894,10 @@ class DailyExpenditure(models.Model):
         return f"{self.description[:50]} - KES {self.amount} ({status}) - {self.created_at.strftime('%Y-%m-%d')}"
     
     def save(self, *args, **kwargs):
+        # Convert description to uppercase
+        if self.description:
+            self.description = self.description.upper()
+        
         # Auto-set role based on user if not provided
         if not self.role and self.entered_by:
             if self.entered_by.is_principal():

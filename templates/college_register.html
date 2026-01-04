@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Management System</title>
+    {% load static %}
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #bbbbbb;
+            color: #333;
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .page-title {
+            text-align: center;
+            font-size: 28px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 40px;
+        }
+
+        .registration-form {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        @media (max-width: 640px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="tel"],
+        input[type="password"],
+        textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background-color: #fff;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .submit-button {
+            width: 100%;
+            padding: 14px;
+            background-color: #4a90e2;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            margin-top: 10px;
+        }
+
+        .submit-button:hover {
+            background-color: #357abd;
+        }
+
+        .submit-button:active {
+            transform: translateY(1px);
+        }
+
+        .submit-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            color: #dc3545;
+            font-size: 13px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .success-message {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .field-group {
+            margin-bottom: 25px;
+        }
+
+        .field-group-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="page-title">COLLEGE MANAGEMENT SYSTEM</h1>
+        
+        <form id="registration-form" class="registration-form" method="POST" action="{% url 'register_school' %}">
+            {% csrf_token %}
+            
+            <div id="success-message" class="success-message"></div>
+            
+            <div class="field-group">
+                <div class="field-group-title">College Information</div>
+                
+                <div class="form-group">
+                    <label for="school_name">College Name</label>
+                    <input type="text" id="school_name" name="school_name" placeholder="Enter college name" required>
+                    <span class="error-message" id="error-school_name"></span>
+                </div>
+
+                <div class="form-group">
+                    <label for="school_address">Address</label>
+                    <textarea id="school_address" name="school_address" placeholder="Enter college address" required></textarea>
+                    <span class="error-message" id="error-school_address"></span>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="county_city">County/City</label>
+                        <input type="text" id="county_city" name="county_city" placeholder="Enter county or city" required>
+                        <span class="error-message" id="error-county_city"></span>
+                    </div>
+                    <div class="form-group">
+                        <label for="school_contact_number">Contact Number</label>
+                        <input type="tel" id="school_contact_number" name="school_contact_number" placeholder="Enter contact number" required>
+                        <span class="error-message" id="error-school_contact_number"></span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="school_email">College Email</label>
+                    <input type="email" id="school_email" name="school_email" placeholder="Enter college email" required>
+                    <span class="error-message" id="error-school_email"></span>
+                </div>
+            </div>
+
+            <div class="field-group">
+                <div class="field-group-title">Administrator Account</div>
+                
+                <div class="form-group">
+                    <label for="owner_full_name">Full Name</label>
+                    <input type="text" id="owner_full_name" name="owner_full_name" placeholder="Enter full name" required>
+                    <span class="error-message" id="error-owner_full_name"></span>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="owner_email">Email</label>
+                        <input type="email" id="owner_email" name="owner_email" placeholder="Enter email address" required>
+                        <span class="error-message" id="error-owner_email"></span>
+                    </div>
+                    <div class="form-group">
+                        <label for="owner_phone">Phone</label>
+                        <input type="tel" id="owner_phone" name="owner_phone" placeholder="Enter phone number" required>
+                        <span class="error-message" id="error-owner_phone"></span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" placeholder="Enter username" required>
+                    <span class="error-message" id="error-username"></span>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" placeholder="Enter password" required>
+                        <span class="error-message" id="error-password"></span>
+                    </div>
+                    <div class="form-group">
+                        <label for="password_confirm">Confirm Password</label>
+                        <input type="password" id="password_confirm" name="password_confirm" placeholder="Confirm password" required>
+                        <span class="error-message" id="error-password_confirm"></span>
+                    </div>
+                </div>
+            </div>
+
+            <input type="hidden" name="school_type" value="college">
+            <input type="hidden" name="position" value="director">
+
+            <button type="submit" class="submit-button" id="submit-btn">Register</button>
+        </form>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('registration-form');
+            const submitBtn = document.getElementById('submit-btn');
+            const successMessage = document.getElementById('success-message');
+
+            function showError(fieldId, message) {
+                const errorEl = document.getElementById('error-' + fieldId);
+                const inputEl = document.getElementById(fieldId);
+                if (errorEl) {
+                    errorEl.textContent = message;
+                    errorEl.classList.add('show');
+                }
+                if (inputEl) {
+                    inputEl.style.borderColor = '#dc3545';
+                }
+            }
+
+            function clearError(fieldId) {
+                const errorEl = document.getElementById('error-' + fieldId);
+                const inputEl = document.getElementById(fieldId);
+                if (errorEl) {
+                    errorEl.textContent = '';
+                    errorEl.classList.remove('show');
+                }
+                if (inputEl) {
+                    inputEl.style.borderColor = '';
+                }
+            }
+
+            function validateForm() {
+                let isValid = true;
+                const requiredFields = [
+                    'school_name', 'school_address', 'county_city', 'school_contact_number',
+                    'school_email', 'owner_full_name', 'owner_email', 'owner_phone',
+                    'username', 'password'
+                ];
+
+                requiredFields.forEach(fieldId => {
+                    const field = document.getElementById(fieldId);
+                    if (field && !field.value.trim()) {
+                        showError(fieldId, 'This field is required');
+                        isValid = false;
+                    } else {
+                        clearError(fieldId);
+                    }
+                });
+
+                const emailFields = ['school_email', 'owner_email'];
+                emailFields.forEach(fieldId => {
+                    const field = document.getElementById(fieldId);
+                    if (field && field.value.trim()) {
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        if (!emailRegex.test(field.value)) {
+                            showError(fieldId, 'Please enter a valid email address');
+                            isValid = false;
+                        }
+                    }
+                });
+
+                const usernameField = document.getElementById('username');
+                if (usernameField && usernameField.value.trim()) {
+                    const usernameRegex = /^[a-zA-Z0-9_]+$/;
+                    if (!usernameRegex.test(usernameField.value)) {
+                        showError('username', 'Username can only contain letters, numbers, and underscores');
+                        isValid = false;
+                    } else if (usernameField.value.length < 3) {
+                        showError('username', 'Username must be at least 3 characters');
+                        isValid = false;
+                    }
+                }
+
+                const passwordField = document.getElementById('password');
+                const passwordConfirmField = document.getElementById('password_confirm');
+                
+                if (passwordField && passwordField.value) {
+                    const password = passwordField.value;
+                    let passwordErrors = [];
+                    
+                    if (password.length < 8) {
+                        passwordErrors.push('at least 8 characters');
+                    }
+                    if (!/[A-Z]/.test(password)) {
+                        passwordErrors.push('uppercase letter');
+                    }
+                    if (!/[a-z]/.test(password)) {
+                        passwordErrors.push('lowercase letter');
+                    }
+                    if (!/[0-9]/.test(password)) {
+                        passwordErrors.push('number');
+                    }
+                    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+                        passwordErrors.push('special character');
+                    }
+                    
+                    if (passwordErrors.length > 0) {
+                        showError('password', 'Password must contain: ' + passwordErrors.join(', '));
+                        isValid = false;
+                    }
+                }
+                
+                if (passwordConfirmField && passwordField) {
+                    if (passwordConfirmField.value !== passwordField.value) {
+                        showError('password_confirm', 'Passwords do not match');
+                        isValid = false;
+                    } else if (passwordConfirmField.value && passwordField.value) {
+                        clearError('password_confirm');
+                    }
+                }
+
+                return isValid;
+            }
+
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+
+                if (!validateForm()) {
+                    return;
+                }
+
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Registering...';
+
+                const formData = new FormData(form);
+
+                fetch('{% url "register_school" %}', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        successMessage.textContent = data.message || 'Registration successful! Redirecting...';
+                        successMessage.classList.add('show');
+                        form.reset();
+                        setTimeout(() => {
+                            window.location.href = '{% url "admin_login" %}';
+                        }, 2000);
+                    } else {
+                        if (data.errors) {
+                            Object.keys(data.errors).forEach(field => {
+                                const fieldId = field.replace('school_', '').replace('owner_', '');
+                                showError(fieldId, data.errors[field]);
+                            });
+                        }
+                        if (data.message) {
+                            alert(data.message);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred. Please try again.');
+                })
+                .finally(() => {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Register';
+                });
+            });
+
+            const inputs = form.querySelectorAll('input, textarea');
+            inputs.forEach(input => {
+                input.addEventListener('input', function() {
+                    clearError(this.id);
+                    if (this.id === 'password_confirm' || this.id === 'password') {
+                        const passwordField = document.getElementById('password');
+                        const passwordConfirmField = document.getElementById('password_confirm');
+                        if (passwordField && passwordConfirmField && passwordField.value && passwordConfirmField.value) {
+                            if (passwordField.value !== passwordConfirmField.value) {
+                                showError('password_confirm', 'Passwords do not match');
+                            } else {
+                                clearError('password_confirm');
+                            }
+                        }
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
+

@@ -44,6 +44,48 @@
                 </div>
             </div>
             
+            <!-- Pending Invoices Section -->
+            <div id="pending-invoices-section" class="content-card" style="display: none; margin: 24px 0;">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-file-invoice"></i> Pending Invoices
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <!-- Search/Filter Input -->
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label class="form-label">
+                            <i class="fas fa-search"></i> Search Invoices
+                        </label>
+                        <input 
+                            type="text" 
+                            id="invoice-search-input" 
+                            class="form-control" 
+                            placeholder="Search by invoice number, semester, or status..."
+                            autocomplete="off"
+                        >
+                    </div>
+                    
+                    <!-- Invoices Table -->
+                    <div id="pending-invoices-list" class="table-container" style="margin-bottom: 16px;">
+                        <!-- Invoices will be loaded here -->
+                    </div>
+                    
+                    <!-- Payment Allocation Preview -->
+                    <div id="payment-allocation-preview" class="content-card" style="display: none; margin-top: 20px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3);">
+                        <div class="card-body" style="padding: 16px;">
+                            <div class="form-label" style="margin-bottom: 12px;">
+                                <i class="fas fa-info-circle" style="color: var(--primary-color);"></i>
+                                <strong>Payment Allocation Preview</strong>
+                            </div>
+                            <div id="allocation-details" style="font-size: 14px; color: var(--text-primary);">
+                                <!-- Allocation details will be shown here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">
@@ -130,6 +172,197 @@
             theme: 'default',
             minimumInputLength: 0  // Allow searching from the start
         });
+        
+        // Load pending invoices when student is selected
+        $('#id_student_select').on('change', function() {
+            const studentId = $(this).val();
+            if (studentId) {
+                loadPendingInvoices(studentId);
+            } else {
+                $('#pending-invoices-section').hide();
+                $('#invoice-search-input').hide().val('');
+            }
+        });
+        
+        // Update allocation preview when amount changes
+        $('#id_amount_paid').on('input', function() {
+            const studentId = $('#id_student_select').val();
+            if (studentId) {
+                updateAllocationPreview(studentId);
+            }
+        });
+        
+        function loadPendingInvoices(studentId) {
+            $.ajax({
+                url: `/accounts/api/students/${studentId}/pending-invoices/`,
+                method: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        displayPendingInvoices(response.pending_invoices, response.student);
+                        updateAllocationPreview(studentId);
+                        $('#pending-invoices-section').show();
+                    } else {
+                        $('#pending-invoices-section').hide();
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error loading pending invoices:', xhr);
+                    $('#pending-invoices-section').hide();
+                }
+            });
+        }
+        
+        // Store invoices data for filtering
+        let allInvoicesData = [];
+        
+        function displayPendingInvoices(invoices, student) {
+            const container = $('#pending-invoices-list');
+            container.empty();
+            
+            // Store invoices for filtering
+            allInvoicesData = invoices;
+            
+            if (invoices.length === 0) {
+                container.html('<div class="empty-state" style="text-align: center; padding: 40px;"><i class="fas fa-check-circle" style="font-size: 48px; color: var(--success-color); margin-bottom: 15px;"></i><p style="color: var(--success-color); margin: 0; font-size: 14px;">No pending invoices. Payment will be recorded as advance payment.</p></div>');
+                return;
+            }
+            
+            let html = '<table class="data-table" data-invoice-table>';
+            html += '<thead><tr>';
+            html += '<th>Invoice</th>';
+            html += '<th>Semester</th>';
+            html += '<th style="text-align: right;">Amount Due</th>';
+            html += '<th style="text-align: right;">Paid</th>';
+            html += '<th style="text-align: right;">Balance</th>';
+            html += '<th style="text-align: center;">Status</th>';
+            html += '</tr></thead><tbody>';
+            
+            invoices.forEach(function(invoice) {
+                // Use correct badge classes from accounts.css
+                let statusClass = 'badge-pending';
+                if (invoice.status === 'overdue') {
+                    statusClass = 'badge-overdue';
+                } else if (invoice.status === 'partial') {
+                    statusClass = 'badge-partial';
+                } else if (invoice.status === 'paid') {
+                    statusClass = 'badge-paid';
+                } else if (invoice.status === 'cancelled') {
+                    statusClass = 'badge-cancelled';
+                }
+                
+                const statusBadge = `<span class="badge ${statusClass}">${invoice.status.toUpperCase()}</span>`;
+                const balanceColor = parseFloat(invoice.balance) > 0 ? 'var(--danger-color)' : 'var(--success-color)';
+                
+                html += '<tr data-invoice-row>';
+                html += `<td><strong>${invoice.invoice_number}</strong></td>`;
+                html += `<td>Semester ${invoice.semester_number}</td>`;
+                html += `<td style="text-align: right;">KES ${parseFloat(invoice.fee_amount).toLocaleString('en-KE', {minimumFractionDigits: 2})}</td>`;
+                html += `<td style="text-align: right;">KES ${parseFloat(invoice.total_paid).toLocaleString('en-KE', {minimumFractionDigits: 2})}</td>`;
+                html += `<td style="text-align: right; font-weight: bold; color: ${balanceColor};">KES ${parseFloat(invoice.balance).toLocaleString('en-KE', {minimumFractionDigits: 2})}</td>`;
+                html += `<td style="text-align: center;">${statusBadge}</td>`;
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            container.html(html);
+            
+            // Show search input if there are invoices
+            $('#invoice-search-input').show();
+        }
+        
+        // Search/Filter functionality
+        $('#invoice-search-input').on('input', function() {
+            const searchTerm = $(this).val().toLowerCase().trim();
+            const rows = $('table[data-invoice-table] tbody tr[data-invoice-row]');
+            
+            if (!searchTerm) {
+                rows.show();
+                return;
+            }
+            
+            rows.each(function() {
+                const $row = $(this);
+                const invoiceNumber = $row.find('td:first-child').text().toLowerCase();
+                const semester = $row.find('td:nth-child(2)').text().toLowerCase();
+                const status = $row.find('td:last-child').text().toLowerCase();
+                
+                if (invoiceNumber.includes(searchTerm) || 
+                    semester.includes(searchTerm) || 
+                    status.includes(searchTerm)) {
+                    $row.show();
+                } else {
+                    $row.hide();
+                }
+            });
+        });
+        
+        function updateAllocationPreview(studentId) {
+            const amountPaid = parseFloat($('#id_amount_paid').val()) || 0;
+            const allocationPreview = $('#payment-allocation-preview');
+            const allocationDetails = $('#allocation-details');
+            
+            if (amountPaid <= 0) {
+                allocationPreview.hide();
+                return;
+            }
+            
+            $.ajax({
+                url: `/accounts/api/students/${studentId}/pending-invoices/`,
+                method: 'GET',
+                success: function(response) {
+                    if (response.success && response.pending_invoices.length > 0) {
+                        let remaining = amountPaid;
+                        let allocation = [];
+                        
+                        response.pending_invoices.forEach(function(invoice) {
+                            if (remaining <= 0) return;
+                            
+                            const balance = parseFloat(invoice.balance);
+                            if (balance > 0) {
+                                const applied = Math.min(remaining, balance);
+                                allocation.push({
+                                    invoice: invoice.invoice_number,
+                                    semester: invoice.semester_number,
+                                    applied: applied,
+                                    balance: balance
+                                });
+                                remaining -= applied;
+                            }
+                        });
+                        
+                        if (allocation.length > 0) {
+                            let html = '<ul style="margin: 0; padding-left: 20px;">';
+                            allocation.forEach(function(item) {
+                                html += `<li>KES ${item.applied.toLocaleString('en-KE', {minimumFractionDigits: 2})} → ${item.invoice} (Semester ${item.semester})</li>`;
+                            });
+                            if (remaining > 0) {
+                                html += `<li style="color: #856404;"><strong>KES ${remaining.toLocaleString('en-KE', {minimumFractionDigits: 2})} excess → Will be applied to future invoices</strong></li>`;
+                            }
+                            html += '</ul>';
+                            allocationDetails.html(html);
+                            allocationPreview.show();
+                        } else {
+                            allocationPreview.hide();
+                        }
+                    } else {
+                        allocationDetails.html(`<p style="margin: 0;">KES ${amountPaid.toLocaleString('en-KE', {minimumFractionDigits: 2})} will be recorded as advance payment.</p>`);
+                        allocationPreview.show();
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error updating allocation preview:', xhr);
+                }
+            });
+        }
+        
+        // Load invoices if student is pre-selected
+        const initialStudentId = $('#id_student_select').val();
+        if (initialStudentId) {
+            loadPendingInvoices(initialStudentId);
+        }
+        
+        // Hide search input initially
+        $('#invoice-search-input').hide();
     });
 </script>
 {% endblock %}

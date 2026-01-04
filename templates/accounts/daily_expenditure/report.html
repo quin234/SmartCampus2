@@ -8,19 +8,56 @@
 
 {% block header_actions %}
 <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-    <form method="get" style="display: flex; gap: 8px; align-items: center;">
-        <label for="date-select" style="font-weight: 600; color: var(--text-color);">
-            <i class="fas fa-calendar-alt"></i> Select Date:
+    <!-- Date Range Picker for Directors -->
+    <form method="get" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" id="date-range-form">
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <label for="start-date" class="form-label" style="margin: 0; font-weight: 600; color: var(--text-primary);">
+                <i class="fas fa-calendar-alt"></i> From:
+            </label>
+            <input type="date" 
+                   id="start-date" 
+                   name="start_date" 
+                   value="{% if start_date %}{{ start_date|date:'Y-m-d' }}{% endif %}" 
+                   class="form-control" 
+                   style="width: auto; padding: 8px 12px; border-radius: 8px; border: 1.5px solid var(--border-color);">
+        </div>
+        
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <label for="end-date" class="form-label" style="margin: 0; font-weight: 600; color: var(--text-primary);">
+                To:
+            </label>
+            <input type="date" 
+                   id="end-date" 
+                   name="end_date" 
+                   value="{% if end_date %}{{ end_date|date:'Y-m-d' }}{% endif %}" 
+                   class="form-control" 
+                   style="width: auto; padding: 8px 12px; border-radius: 8px; border: 1.5px solid var(--border-color);">
+        </div>
+        
+        <button type="submit" class="btn btn-primary" style="border-radius: 8px; padding: 8px 16px;">
+            <i class="fas fa-search"></i> Filter
+        </button>
+        
+        <button type="button" class="btn btn-secondary" onclick="resetDateRange()" style="border-radius: 8px; padding: 8px 16px;">
+            <i class="fas fa-redo"></i> Reset
+        </button>
+    </form>
+    
+    <!-- Single Date Picker (Alternative) -->
+    <form method="get" style="display: flex; gap: 8px; align-items: center; margin-left: 12px;" id="single-date-form">
+        <label for="date-select" class="form-label" style="margin: 0; font-weight: 600; color: var(--text-primary);">
+            <i class="fas fa-calendar-day"></i> Single Date:
         </label>
         <input type="date" 
                id="date-select" 
                name="date" 
                value="{{ selected_date|date:'Y-m-d' }}" 
                class="form-control" 
-               style="width: auto;"
+               style="width: auto; padding: 8px 12px; border-radius: 8px; border: 1.5px solid var(--border-color);"
                onchange="this.form.submit()">
     </form>
-    <div style="background: var(--primary-color); color: white; padding: 8px 16px; border-radius: 6px; font-weight: 600;">
+    
+    <div style="background: var(--primary-color); color: white; padding: 8px 16px; border-radius: 8px; font-weight: 600;">
         <i class="fas fa-coins"></i> Total: KES {{ daily_total|floatformat:2 }}
     </div>
 </div>
@@ -32,9 +69,17 @@
     <div class="card">
         <div class="card-header">
             <h3 class="card-title">
-                <i class="fas fa-list"></i> Expenditures for {{ selected_date|date:"F d, Y" }}
+                <i class="fas fa-list"></i> 
+                {% if start_date and end_date %}
+                    Expenditures from {{ start_date|date:"M d, Y" }} to {{ end_date|date:"M d, Y" }}
+                {% else %}
+                    Expenditures for {{ selected_date|date:"F d, Y" }}
+                {% endif %}
                 <span class="badge" style="background: var(--success-color); color: white; margin-left: 8px;">
                     {{ expenditures|length }}
+                </span>
+                <span style="margin-left: 12px; font-size: 12px; color: var(--text-light);">
+                    <i class="fas fa-lock"></i> Read-Only
                 </span>
             </h3>
         </div>
@@ -89,12 +134,22 @@
         </div>
     </div>
     
-    <!-- Line Graph -->
+    <!-- Charts Section -->
     <div class="card">
         <div class="card-header">
             <h3 class="card-title">
-                <i class="fas fa-chart-line"></i> Cumulative Expenditure Trend
+                <i class="fas fa-chart-line"></i> Expenditure Visualization
             </h3>
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                <button type="button" class="btn btn-sm btn-primary" id="view-line-chart" onclick="showChart('line')" style="border-radius: 6px;">
+                    <i class="fas fa-chart-line"></i> Line Chart
+                </button>
+                {% if start_date and end_date %}
+                <button type="button" class="btn btn-sm btn-secondary" id="view-bar-chart" onclick="showChart('bar')" style="border-radius: 6px;">
+                    <i class="fas fa-chart-bar"></i> Monthly Bar Chart
+                </button>
+                {% endif %}
+            </div>
         </div>
         <div class="card-body">
             <canvas id="expenditure-chart" style="max-height: 400px;"></canvas>
@@ -134,33 +189,72 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 <script>
+let expenditureChart = null;
+
 document.addEventListener('DOMContentLoaded', function() {
-    // Prepare chart data
-    const cumulativeData = {{ cumulative_data|safe }};
+    // Initialize with line chart
+    showChart('line');
     
-    const labels = cumulativeData.map(item => {
-        const date = new Date(item.date);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    });
-    
-    const data = cumulativeData.map(item => item.cumulative_total);
-    
-    // Create line chart
+    // Update chart when date range changes
+    const dateRangeForm = document.getElementById('date-range-form');
+    if (dateRangeForm) {
+        dateRangeForm.addEventListener('submit', function(e) {
+            // Chart will be updated after page reload
+        });
+    }
+});
+
+function resetDateRange() {
+    document.getElementById('start-date').value = '';
+    document.getElementById('end-date').value = '';
+    window.location.href = window.location.pathname;
+}
+
+function showChart(chartType) {
     const ctx = document.getElementById('expenditure-chart');
-    if (ctx) {
-        new Chart(ctx, {
+    if (!ctx) return;
+    
+    // Destroy existing chart
+    if (expenditureChart) {
+        expenditureChart.destroy();
+    }
+    
+    if (chartType === 'line') {
+        // Prepare cumulative data for line chart
+        const cumulativeData = {{ cumulative_data|safe }};
+        
+        const labels = cumulativeData.map(item => {
+            const date = new Date(item.date);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        });
+        
+        const data = cumulativeData.map(item => item.cumulative_total);
+        
+        // Calculate daily totals for tooltip
+        const dailyTotals = [];
+        let prevTotal = 0;
+        cumulativeData.forEach((item, index) => {
+            const dailyTotal = index > 0 ? item.cumulative_total - prevTotal : item.cumulative_total;
+            dailyTotals.push(dailyTotal);
+            prevTotal = item.cumulative_total;
+        });
+        
+        expenditureChart = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: labels,
                 datasets: [{
                     label: 'Cumulative Expenditure (KES)',
                     data: data,
-                    borderColor: 'rgb(75, 192, 192)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    borderColor: 'rgb(59, 130, 246)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
                     tension: 0.4,
                     fill: true,
-                    pointRadius: 3,
-                    pointHoverRadius: 5,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: 'rgb(59, 130, 246)',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
                 }]
             },
             options: {
@@ -174,7 +268,88 @@ document.addEventListener('DOMContentLoaded', function() {
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                return 'KES ' + context.parsed.y.toLocaleString('en-US', {
+                                const index = context.dataIndex;
+                                const cumulative = context.parsed.y;
+                                const daily = dailyTotals[index] || 0;
+                                return [
+                                    'Cumulative: KES ' + cumulative.toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    }),
+                                    'Daily: KES ' + daily.toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    })
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return 'KES ' + value.toLocaleString('en-US', {
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 0
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Update button states
+        document.getElementById('view-line-chart').classList.add('btn-primary');
+        document.getElementById('view-line-chart').classList.remove('btn-secondary');
+        if (document.getElementById('view-bar-chart')) {
+            document.getElementById('view-bar-chart').classList.add('btn-secondary');
+            document.getElementById('view-bar-chart').classList.remove('btn-primary');
+        }
+    } else if (chartType === 'bar') {
+        // Prepare monthly data for bar chart
+        const monthlyData = {{ monthly_data|safe }};
+        
+        if (monthlyData.length === 0) {
+            ctx.getContext('2d').clearRect(0, 0, ctx.width, ctx.height);
+            ctx.getContext('2d').fillText('No monthly data available for selected range', 10, 50);
+            return;
+        }
+        
+        const labels = monthlyData.map(item => {
+            const [year, month] = item.month.split('-');
+            const date = new Date(year, month - 1);
+            return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        });
+        
+        const data = monthlyData.map(item => item.total);
+        
+        expenditureChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Monthly Expenditure (KES)',
+                    data: data,
+                    backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                    borderColor: 'rgb(59, 130, 246)',
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Total: KES ' + context.parsed.y.toLocaleString('en-US', {
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2
                                 });
@@ -197,14 +372,70 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
+        
+        // Update button states
+        document.getElementById('view-bar-chart').classList.add('btn-primary');
+        document.getElementById('view-bar-chart').classList.remove('btn-secondary');
+        document.getElementById('view-line-chart').classList.add('btn-secondary');
+        document.getElementById('view-line-chart').classList.remove('btn-primary');
     }
-});
+}
 </script>
 
 <style>
+/* Professional rounded form styling */
+.content-card .form-control,
+.content-card input[type="text"],
+.content-card input[type="number"],
+.content-card input[type="date"],
+.content-card textarea,
+.content-card select {
+    border-radius: 8px !important;
+    border: 1.5px solid var(--border-color) !important;
+    padding: 10px 14px !important;
+    transition: all 0.2s ease !important;
+}
+
+.content-card .form-control:focus,
+.content-card input:focus,
+.content-card textarea:focus,
+.content-card select:focus {
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+    outline: none !important;
+}
+
+.content-card .btn {
+    border-radius: 8px !important;
+    padding: 10px 20px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+
+.content-card .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
 @media (max-width: 768px) {
     .content-grid {
         grid-template-columns: 1fr !important;
+    }
+    
+    #date-range-form,
+    #single-date-form {
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+    
+    #date-range-form > div,
+    #single-date-form > div {
+        width: 100% !important;
+    }
+    
+    #date-range-form input,
+    #single-date-form input {
+        width: 100% !important;
     }
 }
 </style>

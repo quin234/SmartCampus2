@@ -69,149 +69,137 @@ def api_departments_list(request, college_slug):
     verify_user_college_access(request, college)
     
     if request.method == 'GET':
-        # Get all courses grouped by name (as departments)
-        search = request.GET.get('search', '')
-        page = int(request.GET.get('page', 1))
-        page_size = min(int(request.GET.get('page_size', 10)), 50)  # Max 50
-        include_courses = request.GET.get('include_courses', 'true').lower() == 'true'
-        
-        # For now, use course names as departments (you can create a Department model later)
-        courses = CollegeCourse.objects.filter(college=college).select_related('global_course')
-        if search:
-            courses = courses.filter(name__icontains=search)
-        
-        # Get stored department metadata from college
-        departments_metadata = {}
-        if college.grading_criteria and 'departments' in college.grading_criteria:
-            departments_metadata = college.grading_criteria.get('departments', {})
-        
-        # Group courses by department (using first word of course name)
-        departments_dict = {}
-        for course in courses:
-            dept_name = course.name.split()[0] if course.name else 'General'  # Use first word as department
+        try:
+            # Get all departments from the Department model
+            from accounts.models import Department
+            from education.models import CollegeCourse
             
-            if dept_name not in departments_dict:
-                # Check if we have stored metadata for this department
-                stored_meta = departments_metadata.get(dept_name, {})
+            search = request.GET.get('search', '')
+            page = int(request.GET.get('page', 1))
+            page_size = min(int(request.GET.get('page_size', 10)), 50)  # Max 50
+            include_courses = request.GET.get('include_courses', 'true').lower() == 'true'
+            
+            # Get actual departments from the Department model
+            departments = Department.objects.filter(college=college).order_by('department_name')
+            if search:
+                departments = departments.filter(department_name__icontains=search)
+            
+            departments_list = []
+            for dept in departments:
+                dept_data = {
+                    'id': dept.id,
+                    'name': dept.department_name,
+                    'created_at': dept.created_at.isoformat() if dept.created_at else None,
+                    'updated_at': dept.updated_at.isoformat() if dept.updated_at else None,
+                    'courses': []
+                }
                 
-                departments_dict[dept_name] = {
-                    'id': len(departments_dict) + 1,
-                    'code': stored_meta.get('code', dept_name[:3].upper()) if stored_meta.get('code') else dept_name[:3].upper(),
-                    'name': stored_meta.get('name', dept_name) if stored_meta.get('name') else dept_name,
-                    'description': stored_meta.get('description', f'Department for {dept_name} courses') if stored_meta.get('description') else f'Department for {dept_name} courses',
-                    'courses': []
-                }
+                # Add courses if requested
+                if include_courses:
+                    try:
+                        courses = CollegeCourse.objects.filter(college=college, department=dept).select_related('global_course')
+                        for course in courses:
+                            course_data = {
+                                'id': course.id,
+                                'code': course.code,
+                                'name': course.name,
+                                'duration': course.duration_years,
+                                'global_course_id': course.global_course.id if course.global_course else None,
+                                'global_course_name': course.global_course.name if course.global_course else None,
+                                'global_course_level': course.global_course.get_level_display() if course.global_course else None,
+                                'admission_requirements': course.admission_requirements or '',
+                                'status': 'active'
+                            }
+                            dept_data['courses'].append(course_data)
+                    except Exception as e:
+                        # If filtering by department fails, log and skip courses for this department
+                        import logging
+                        import traceback
+                        logger = logging.getLogger(__name__)
+                        logger.error(f'Error loading courses for department {dept.id}: {str(e)}')
+                        logger.error(traceback.format_exc())
+                        # Continue without courses for this department
+                        pass
+                
+                departments_list.append(dept_data)
             
-            # Add course to department
-            if include_courses:
-                course_data = {
-                    'id': course.id,
-                    'code': course.code,
-                    'name': course.name,
-                    'duration': course.duration_years,
-                    'global_course_id': course.global_course.id if course.global_course else None,
-                    'global_course_name': course.global_course.name if course.global_course else None,
-                    'global_course_level': course.global_course.get_level_display() if course.global_course else None,
-                    'admission_requirements': course.admission_requirements or '',
-                    'status': 'active'
-                }
-                departments_dict[dept_name]['courses'].append(course_data)
-        
-        # Add standalone departments (departments in metadata but no courses yet)
-        for dept_name, dept_meta in departments_metadata.items():
-            if dept_name not in departments_dict:
-                # This is a standalone department (created but no courses assigned)
-                departments_dict[dept_name] = {
-                    'id': len(departments_dict) + 1,
-                    'code': dept_meta.get('code', dept_name[:3].upper()),
-                    'name': dept_meta.get('name', dept_name),
-                    'description': dept_meta.get('description', f'Department for {dept_name} courses'),
-                    'courses': []
-                }
-        
-        # Convert to list and add course_count
-        departments = []
-        for dept_name, dept_data in departments_dict.items():
-            dept_data['course_count'] = len(dept_data['courses'])
-            departments.append(dept_data)
-        
-        # Sort departments by name
-        departments.sort(key=lambda x: x['name'])
-        
-        paginator = Paginator(departments, page_size)
-        page_obj = paginator.get_page(page)
-        
-        return JsonResponse({
-            'count': paginator.count,
-            'results': list(page_obj),
-            'next': page_obj.next_page_number() if page_obj.has_next() else None,
-            'previous': page_obj.previous_page_number() if page_obj.has_previous() else None,
-            'page': page_obj.number,
-            'total_pages': paginator.num_pages
-        })
+            # Add course_count to each department
+            for dept_data in departments_list:
+                dept_data['course_count'] = len(dept_data['courses'])
+            
+            # Sort departments by name
+            departments_list.sort(key=lambda x: x['name'])
+            
+            paginator = Paginator(departments_list, page_size)
+            page_obj = paginator.get_page(page)
+            
+            return JsonResponse({
+                'count': paginator.count,
+                'results': list(page_obj),
+                'next': page_obj.next_page_number() if page_obj.has_next() else None,
+                'previous': page_obj.previous_page_number() if page_obj.has_previous() else None,
+                'page': page_obj.number,
+                'total_pages': paginator.num_pages
+            })
+        except Exception as e:
+            # Catch any unexpected errors and return proper error response
+            import logging
+            import traceback
+            from django.conf import settings
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error in api_departments_list GET: {str(e)}')
+            logger.error(traceback.format_exc())
+            error_response = {'error': 'Internal server error occurred'}
+            if settings.DEBUG:
+                error_response['details'] = str(e)
+                error_response['traceback'] = traceback.format_exc()
+            return JsonResponse(error_response, status=500)
     
     elif request.method == 'POST':
-        # Create new department
+        # Create new department using actual Department model
         try:
             data = json.loads(request.body) if request.body else {}
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON data'}, status=400)
         
-        dept_name = data.get('name', '').strip()
-        dept_code = data.get('code', '').strip()
-        dept_description = data.get('description', '').strip()
+        dept_name = data.get('name', '').strip().upper()
         
         if not dept_name:
             return JsonResponse({'error': 'Department name is required'}, status=400)
         
-        if not dept_code:
-            return JsonResponse({'error': 'Department code is required'}, status=400)
-        
-        # Initialize departments metadata storage
-        if not college.grading_criteria:
-            college.grading_criteria = {}
-        if 'departments' not in college.grading_criteria:
-            college.grading_criteria['departments'] = {}
-        
-        departments_metadata = college.grading_criteria.get('departments', {})
-        
-        # Check if department with this name already exists
-        if dept_name in departments_metadata:
+        # Check if department with this name already exists for this college
+        from accounts.models import Department
+        if Department.objects.filter(college=college, department_name=dept_name).exists():
             return JsonResponse({'error': f'Department "{dept_name}" already exists'}, status=400)
         
-        # Save new department metadata
-        departments_metadata[dept_name] = {
-            'code': dept_code,
-            'name': dept_name,
-            'description': dept_description
-        }
-        
-        # Save to college
-        college.grading_criteria['departments'] = departments_metadata
         try:
-            college.save(update_fields=['grading_criteria', 'updated_at'])
+            # Create department in database
+            department = Department.objects.create(
+                college=college,
+                department_name=dept_name
+            )
+            
+            # Verify creation
+            Department.objects.get(pk=department.pk, college=college)
+            
+            return JsonResponse({
+                'id': department.id,
+                'name': department.department_name,
+                'created_at': department.created_at.isoformat() if department.created_at else None,
+                'updated_at': department.updated_at.isoformat() if department.updated_at else None
+            }, status=201)
         except Exception as e:
-            return JsonResponse({'error': f'Failed to save department: {str(e)}'}, status=500)
-        
-        # Return created department
-        return JsonResponse({
-            'id': len(departments_metadata),  # Sequential ID for compatibility
-            'code': dept_code,
-            'name': dept_name,
-            'description': dept_description
-        }, status=201)
+            return JsonResponse({'error': f'Failed to create department: {str(e)}'}, status=500)
     
     elif request.method in ['PUT', 'PATCH']:
+        # Update existing department using actual Department model
         try:
             data = json.loads(request.body) if request.body else {}
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON data'}, status=400)
         
         dept_id = data.get('id')
-        old_name = data.get('old_name', '').strip()  # Original department name to identify which department
-        new_name = data.get('name', '').strip()
-        new_code = data.get('code', '').strip()
-        new_description = data.get('description', '').strip()
+        new_name = data.get('name', '').strip().upper()
         
         if not dept_id:
             return JsonResponse({'error': 'Department ID is required'}, status=400)
@@ -219,108 +207,200 @@ def api_departments_list(request, college_slug):
         if not new_name:
             return JsonResponse({'error': 'Department name is required'}, status=400)
         
-        # Initialize departments metadata storage in college's grading_criteria
-        if not college.grading_criteria:
-            college.grading_criteria = {}
-        if 'departments' not in college.grading_criteria:
-            college.grading_criteria['departments'] = {}
-        
-        departments_metadata = college.grading_criteria.get('departments', {})
-        
-        # Determine the key to use for lookup
-        # If old_name is provided, use it; otherwise try to find by matching existing metadata
-        dept_key = None
-        if old_name:
-            dept_key = old_name
-        else:
-            # Try to find department by matching name or code in existing metadata
-            for key, meta in departments_metadata.items():
-                if meta.get('name') == new_name or meta.get('code') == new_code:
-                    dept_key = key
-                    break
-        
-        # If still not found and we have old_name, use it anyway
-        if not dept_key and old_name:
-            dept_key = old_name
-        
-        # If name changed, update the key
-        if dept_key and old_name and new_name and old_name != new_name:
-            # Remove old key and create new one
-            if dept_key in departments_metadata:
-                departments_metadata[new_name] = departments_metadata.pop(dept_key)
-            else:
-                departments_metadata[new_name] = {}
-            dept_key = new_name
-        elif not dept_key:
-            # New department (shouldn't happen in PUT, but handle it)
-            dept_key = new_name
-            if dept_key not in departments_metadata:
-                departments_metadata[dept_key] = {}
-        
-        # Update department metadata
-        departments_metadata[dept_key] = {
-            'code': new_code,
-            'name': new_name,
-            'description': new_description
-        }
-        
-        # Save to college - this is critical!
-        college.grading_criteria['departments'] = departments_metadata
+        # Get the department by ID and verify it belongs to the college
+        from accounts.models import Department
         try:
-            college.save(update_fields=['grading_criteria', 'updated_at'])
-        except Exception as e:
-            return JsonResponse({'error': f'Failed to save department: {str(e)}'}, status=500)
+            department = Department.objects.get(pk=dept_id, college=college)
+        except Department.DoesNotExist:
+            return JsonResponse({'error': 'Department not found'}, status=404)
         
-        return JsonResponse({
-            'id': dept_id,
-            'code': new_code,
-            'name': new_name,
-            'description': new_description
-        })
+        # Check for duplicate name (excluding current department)
+        if Department.objects.filter(college=college, department_name=new_name).exclude(pk=dept_id).exists():
+            return JsonResponse({'error': f'Department "{new_name}" already exists'}, status=400)
+        
+        try:
+            # Update the department
+            old_name = department.department_name
+            department.department_name = new_name
+            department.save()
+            
+            # Verify the update actually occurred
+            updated_dept = Department.objects.get(pk=dept_id, college=college, department_name=new_name)
+            
+            return JsonResponse({
+                'id': updated_dept.id,
+                'name': updated_dept.department_name,
+                'created_at': updated_dept.created_at.isoformat() if updated_dept.created_at else None,
+                'updated_at': updated_dept.updated_at.isoformat() if updated_dept.updated_at else None
+            })
+        except Department.DoesNotExist:
+            return JsonResponse({'error': 'Error: Department update failed. Record not found after update.'}, status=500)
+        except Exception as e:
+            return JsonResponse({'error': f'Failed to update department: {str(e)}'}, status=500)
     
     elif request.method == 'DELETE':
+        # Delete department using actual Department model
         try:
             data = json.loads(request.body) if request.body else {}
         except json.JSONDecodeError:
             data = {}
         
         dept_id = data.get('id')
-        old_name = data.get('old_name', '').strip()
         
         if not dept_id:
             return JsonResponse({'error': 'Department ID is required'}, status=400)
         
-        # Get department metadata
-        if not college.grading_criteria:
-            college.grading_criteria = {}
-        if 'departments' not in college.grading_criteria:
-            college.grading_criteria['departments'] = {}
+        # Get the department by ID and verify it belongs to the college
+        from accounts.models import Department
+        from education.models import CollegeCourse
+        try:
+            department = Department.objects.get(pk=dept_id, college=college)
+        except Department.DoesNotExist:
+            return JsonResponse({'error': 'Department not found'}, status=404)
         
-        departments_metadata = college.grading_criteria.get('departments', {})
+        # Check if department has any courses
+        course_count = CollegeCourse.objects.filter(department=department, college=college).count()
+        if course_count > 0:
+            return JsonResponse({
+                'error': f'Cannot delete department "{department.department_name}" because it has {course_count} course(s) assigned. Please reassign or delete the courses first.'
+            }, status=400)
         
-        # Find and remove the department
-        # Use old_name if provided, otherwise try to find by matching
-        dept_key = None
-        if old_name:
-            dept_key = old_name
-        else:
-            # Try to find by iterating through metadata
-            for key in list(departments_metadata.keys()):
-                if key:  # If we have any department, we'll delete the first matching one
-                    dept_key = key
-                    break
-        
-        # Remove department from metadata
-        if dept_key and dept_key in departments_metadata:
-            del departments_metadata[dept_key]
-            college.grading_criteria['departments'] = departments_metadata
+        try:
+            department_name = department.department_name
+            department_id = department.pk
+            
+            # Delete the department
+            department.delete()
+            
+            # Verify deletion actually occurred
             try:
-                college.save(update_fields=['grading_criteria', 'updated_at'])
+                Department.objects.get(pk=department_id)
+                # If we get here, deletion failed
+                return JsonResponse({'error': 'Error: Department deletion failed. Record still exists.'}, status=500)
+            except Department.DoesNotExist:
+                # Deletion successful - record no longer exists
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Department "{department_name}" deleted successfully'
+                }, status=200)
             except Exception as e:
                 return JsonResponse({'error': f'Failed to delete department: {str(e)}'}, status=500)
+        except Exception as e:
+            return JsonResponse({'error': f'Failed to delete department: {str(e)}'}, status=500)
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["GET"])
+def api_department_course_overview(request, college_slug, pk):
+    """API endpoint for department course overview with student statistics - ENFORCES COLLEGE ISOLATION"""
+    college = get_college_from_slug(college_slug)
+    if not college:
+        return JsonResponse({'error': 'College not found'}, status=404)
+    
+    # Verify user has access to this college
+    verify_user_college_access(request, college)
+    
+    try:
+        from accounts.models import Department
+        from education.models import CollegeCourse, Student, Enrollment
+        from django.db.models import Count, Q
+        from django.utils import timezone
         
-        # Return 204 No Content (no body)
-        return HttpResponse(status=204)
+        # Get the department
+        try:
+            department = Department.objects.get(pk=pk, college=college)
+        except Department.DoesNotExist:
+            return JsonResponse({'error': 'Department not found'}, status=404)
+        
+        # Get all courses for this department
+        courses = CollegeCourse.objects.filter(
+            college=college,
+            department=department
+        ).select_related('global_course').order_by('name')
+        
+        # Get current academic year
+        current_year = timezone.now().year
+        current_academic_year = f"{current_year}/{current_year + 1}"
+        
+        courses_list = []
+        for course in courses:
+            # Get active students for this course
+            active_students = Student.objects.filter(
+                college=college,
+                course=course,
+                status='active'
+            )
+            
+            # Get student counts grouped by year_of_study and semester
+            # Use student's year_of_study and current_semester for accurate counts
+            student_stats = {}
+            
+            # Count students by their year_of_study and current_semester
+            students_by_year_sem = active_students.values(
+                'year_of_study',
+                'current_semester'
+            ).annotate(
+                count=Count('id')
+            )
+            
+            for student_group in students_by_year_sem:
+                year = student_group['year_of_study']
+                semester = student_group['current_semester'] or 1
+                
+                if year not in student_stats:
+                    student_stats[year] = {}
+                if semester not in student_stats[year]:
+                    student_stats[year][semester] = 0
+                
+                student_stats[year][semester] += student_group['count']
+            
+            # Calculate total active students
+            total_active_students = active_students.count()
+            
+            # Format student statistics
+            student_statistics = []
+            for year in sorted(student_stats.keys()):
+                for semester in sorted(student_stats[year].keys()):
+                    student_statistics.append({
+                        'year': year,
+                        'semester': semester,
+                        'count': student_stats[year][semester]
+                    })
+            
+            course_data = {
+                'id': course.id,
+                'code': course.code,
+                'name': course.name,
+                'duration_years': course.duration_years,
+                'total_active_students': total_active_students,
+                'student_statistics': student_statistics
+            }
+            
+            courses_list.append(course_data)
+        
+        return JsonResponse({
+            'department': {
+                'id': department.id,
+                'name': department.department_name,
+            },
+            'courses': courses_list,
+            'total_courses': len(courses_list),
+            'current_academic_year': current_academic_year
+        })
+        
+    except Exception as e:
+        import logging
+        import traceback
+        from django.conf import settings
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in api_department_course_overview: {str(e)}')
+        logger.error(traceback.format_exc())
+        error_response = {'error': 'Internal server error occurred'}
+        if settings.DEBUG:
+            error_response['details'] = str(e)
+            error_response['traceback'] = traceback.format_exc()
+        return JsonResponse(error_response, status=500)
 
 
 @login_required
@@ -336,28 +416,94 @@ def api_department_detail(request, college_slug, pk):
     verify_user_college_access(request, college)
     
     if request.method == 'GET':
-        # Return placeholder department
-        return JsonResponse({
-            'id': pk,
-            'code': 'DEPT',
-            'name': 'Department',
-            'description': 'Department description'
-        })
+        # Get department by ID
+        from accounts.models import Department
+        try:
+            department = Department.objects.get(pk=pk, college=college)
+            return JsonResponse({
+                'id': department.id,
+                'name': department.department_name,
+                'created_at': department.created_at.isoformat() if department.created_at else None,
+                'updated_at': department.updated_at.isoformat() if department.updated_at else None
+            })
+        except Department.DoesNotExist:
+            return JsonResponse({'error': 'Department not found'}, status=404)
     
     elif request.method == 'PUT':
+        # Update department by ID
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
-        return JsonResponse({
-            'id': pk,
-            'code': data.get('code', ''),
-            'name': data.get('name', ''),
-            'description': data.get('description', '')
-        })
+        
+        new_name = data.get('name', '').strip()
+        if not new_name:
+            return JsonResponse({'error': 'Department name is required'}, status=400)
+        
+        from accounts.models import Department
+        try:
+            department = Department.objects.get(pk=pk, college=college)
+        except Department.DoesNotExist:
+            return JsonResponse({'error': 'Department not found'}, status=404)
+        
+        # Check for duplicate name
+        if Department.objects.filter(college=college, department_name=new_name).exclude(pk=pk).exists():
+            return JsonResponse({'error': f'Department "{new_name}" already exists'}, status=400)
+        
+        try:
+            department.department_name = new_name
+            department.save()
+            
+            # Verify update
+            updated_dept = Department.objects.get(pk=pk, college=college, department_name=new_name)
+            return JsonResponse({
+                'id': updated_dept.id,
+                'name': updated_dept.department_name,
+                'created_at': updated_dept.created_at.isoformat() if updated_dept.created_at else None,
+                'updated_at': updated_dept.updated_at.isoformat() if updated_dept.updated_at else None
+            })
+        except Department.DoesNotExist:
+            return JsonResponse({'error': 'Error: Department update failed'}, status=500)
+        except Exception as e:
+            return JsonResponse({'error': f'Failed to update department: {str(e)}'}, status=500)
     
     elif request.method == 'DELETE':
-        return JsonResponse({'success': True}, status=204)
+        # Delete department by ID
+        from accounts.models import Department
+        from education.models import CollegeCourse
+        
+        try:
+            department = Department.objects.get(pk=pk, college=college)
+        except Department.DoesNotExist:
+            return JsonResponse({'error': 'Department not found'}, status=404)
+        
+        # Check if department has any courses
+        course_count = CollegeCourse.objects.filter(department=department, college=college).count()
+        if course_count > 0:
+            return JsonResponse({
+                'error': f'Cannot delete department "{department.department_name}" because it has {course_count} course(s) assigned. Please reassign or delete the courses first.'
+            }, status=400)
+        
+        try:
+            department_name = department.department_name
+            department_id = department.pk
+            
+            # Delete the department
+            department.delete()
+            
+            # Verify deletion actually occurred
+            try:
+                Department.objects.get(pk=department_id)
+                # If we get here, deletion failed
+                return JsonResponse({'error': 'Error: Department deletion failed. Record still exists.'}, status=500)
+            except Department.DoesNotExist:
+                # Deletion successful
+                return JsonResponse({
+                    'success': True,
+                    'message': f'Department "{department_name}" deleted successfully'
+                }, status=200)
+        except Exception as e:
+            return JsonResponse({'error': f'Failed to delete department: {str(e)}'}, status=500)
 
 
 @login_required
@@ -378,7 +524,7 @@ def api_courses_list(request, college_slug):
         page = int(request.GET.get('page', 1))
         page_size = min(int(request.GET.get('page_size', 10)), 50)  # Max 50
         
-        courses = CollegeCourse.objects.filter(college=college).select_related('global_course')
+        courses = CollegeCourse.objects.filter(college=college).select_related('global_course', 'department')
         if search:
             courses = courses.filter(name__icontains=search)
         
@@ -392,8 +538,8 @@ def api_courses_list(request, college_slug):
                 'id': course.id,
                 'code': course.code,
                 'name': course.name,
-                'department_id': 1,  # Placeholder
-                'department_name': course.name.split()[0] if course.name else 'General',
+                'department_id': course.department.id if course.department else None,
+                'department_name': course.department.department_name if course.department else None,
                 'duration': course.duration_years,
                 'global_course_id': course.global_course.id if course.global_course else None,
                 'global_course_name': course.global_course.name if course.global_course else None,
@@ -419,7 +565,7 @@ def api_courses_list(request, college_slug):
         
         course_name = data.get('name', '').strip()
         course_code = data.get('code', '').strip().upper()
-        department_name = data.get('department_name', '').strip()
+        department_id = data.get('department_id')
         
         if not course_name:
             return JsonResponse({'error': 'Course name is required'}, status=400)
@@ -427,8 +573,19 @@ def api_courses_list(request, college_slug):
         if not course_code:
             return JsonResponse({'error': 'Course code is required'}, status=400)
         
+        if not department_id:
+            return JsonResponse({'error': 'Department is required. Please select an existing department.'}, status=400)
+        
+        # Validate department exists and belongs to college
+        from accounts.models import Department
+        try:
+            department = Department.objects.get(id=department_id, college=college)
+        except Department.DoesNotExist:
+            return JsonResponse({'error': 'Invalid department selected. Department must exist and belong to your college.'}, status=400)
+        
         course = CollegeCourse.objects.create(
             college=college,
+            department=department,
             code=course_code,
             name=course_name,
             duration_years=data.get('duration', 1),
@@ -436,15 +593,12 @@ def api_courses_list(request, college_slug):
             admission_requirements=data.get('admission_requirements', '')
         )
         
-        # Extract department name from course name (first word)
-        dept_name = course.name.split()[0] if course.name else 'General'
-        
         return JsonResponse({
             'id': course.id,
             'code': course.code,
             'name': course.name,
-            'department_id': 1,
-            'department_name': dept_name,
+            'department_id': course.department.id,
+            'department_name': course.department.department_name,
             'duration': course.duration_years,
             'global_course_id': course.global_course.id if course.global_course else None,
             'global_course_name': course.global_course.name if course.global_course else None,
@@ -467,12 +621,27 @@ def api_courses_list(request, college_slug):
         except CollegeCourse.DoesNotExist:
             return JsonResponse({'error': 'Course not found'}, status=404)
         
-        course.name = data.get('name', course.name)
+        # Handle name updates - ensure uppercase
+        if 'name' in data:
+            course.name = data.get('name', '').strip().upper()
         course.duration_years = data.get('duration', course.duration_years)
         
-        # Handle code updates
+        # Handle code updates - ensure uppercase
         if 'code' in data:
             course.code = data.get('code', '').strip().upper()
+        
+        # Handle department_id updates - must validate department exists and belongs to college
+        if 'department_id' in data:
+            department_id = data.get('department_id')
+            if department_id:
+                from accounts.models import Department
+                try:
+                    department = Department.objects.get(id=department_id, college=college)
+                    course.department = department
+                except Department.DoesNotExist:
+                    return JsonResponse({'error': 'Invalid department selected. Department must exist and belong to your college.'}, status=400)
+            else:
+                return JsonResponse({'error': 'Department is required. Please select an existing department.'}, status=400)
         
         # Handle global_course_id updates
         if 'global_course_id' in data:
@@ -488,7 +657,8 @@ def api_courses_list(request, college_slug):
             'id': course.id,
             'code': course.code,
             'name': course.name,
-            'department_id': 1,
+            'department_id': course.department.id if course.department else None,
+            'department_name': course.department.department_name if course.department else None,
             'duration': course.duration_years,
             'global_course_id': course.global_course.id if course.global_course else None,
             'global_course_name': course.global_course.name if course.global_course else None,
@@ -716,8 +886,8 @@ def api_units_list(request, college_slug):
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
         unit = CollegeUnit.objects.create(
             college=college,
-            name=data.get('name', ''),
-            code=data.get('code', ''),
+            name=data.get('name', '').strip().upper(),
+            code=data.get('code', '').strip().upper(),
             semester=data.get('semester', 1),
             global_unit_id=data.get('global_unit_id') if data.get('global_unit_id') else None,
             assigned_lecturer_id=data.get('assigned_lecturer_id') or data.get('lecturer') if (data.get('assigned_lecturer_id') or data.get('lecturer')) else None
@@ -752,8 +922,11 @@ def api_units_list(request, college_slug):
         except CollegeUnit.DoesNotExist:
             return JsonResponse({'error': 'Unit not found'}, status=404)
         
-        unit.name = data.get('name', unit.name)
-        unit.code = data.get('code', unit.code)
+        # Ensure name and code are uppercase
+        if 'name' in data:
+            unit.name = data.get('name', '').strip().upper()
+        if 'code' in data:
+            unit.code = data.get('code', '').strip().upper()
         unit.semester = data.get('semester', unit.semester)
         
         # Handle global_unit_id updates
@@ -1138,7 +1311,7 @@ def api_students_list(request, college_slug):
         # Create student
         student = Student.objects.create(
             college=college,
-            admission_number=data.get('admission_number', ''),
+            admission_number=data.get('admission_number', '').strip().upper(),
             full_name=data.get('full_name', ''),
             email=data.get('email', ''),
             phone=data.get('phone', ''),
@@ -1235,7 +1408,9 @@ def api_students_list(request, college_slug):
         
         # Update other fields
         student.full_name = data.get('full_name', student.full_name)
-        student.admission_number = data.get('admission_number', student.admission_number)
+        # Ensure admission_number is uppercase
+        if 'admission_number' in data:
+            student.admission_number = data.get('admission_number', '').strip().upper()
         student.email = data.get('email', student.email)
         student.phone = data.get('phone', student.phone)
         student.gender = data.get('gender', student.gender)
@@ -1345,7 +1520,9 @@ def api_student_detail(request, college_slug, pk):
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
         student.full_name = data.get('full_name', student.full_name)
-        student.admission_number = data.get('admission_number', student.admission_number)
+        # Ensure admission_number is uppercase
+        if 'admission_number' in data:
+            student.admission_number = data.get('admission_number', '').strip().upper()
         student.email = data.get('email', student.email)
         student.phone = data.get('phone', student.phone)
         student.gender = data.get('gender', student.gender)
@@ -5281,11 +5458,17 @@ def api_courseunits_list(request, college_slug):
                 'error': f'Year of study ({data["year_of_study"]}) cannot exceed course duration ({course.duration_years} years)'
             }, status=400)
         
-        # Validate semester
-        if data['semester'] < 1 or data['semester'] > 4:
-            return JsonResponse({'error': 'Semester must be between 1 and 4'}, status=400)
+        # Validate semester against college's semesters_per_year
+        semester_value = int(data['semester'])
+        if semester_value < 1:
+            return JsonResponse({'error': 'Semester must be at least 1'}, status=400)
+        if semester_value > college.semesters_per_year:
+            return JsonResponse({
+                'error': f'Semester ({semester_value}) cannot exceed college semesters per year ({college.semesters_per_year})'
+            }, status=400)
         
-        # Check if assignment already exists
+        # Check if assignment already exists (check both the model constraint and database constraint)
+        # First check the full combination (model constraint)
         if CollegeCourseUnit.objects.filter(
             course=course,
             unit=unit,
@@ -5294,27 +5477,57 @@ def api_courseunits_list(request, college_slug):
         ).exists():
             return JsonResponse({'error': 'This unit is already assigned to this course for the specified year and semester'}, status=400)
         
-        # Create assignment
-        courseunit = CollegeCourseUnit.objects.create(
+        # Also check for database-level constraint (course_id, unit_id) - this might be a legacy constraint
+        if CollegeCourseUnit.objects.filter(
             course=course,
-            unit=unit,
-            year_of_study=data['year_of_study'],
-            semester=data['semester'],
-            college=college
-        )
+            unit=unit
+        ).exists():
+            existing = CollegeCourseUnit.objects.filter(course=course, unit=unit).first()
+            return JsonResponse({
+                'error': f'This unit is already assigned to this course (Year {existing.year_of_study}, Semester {existing.semester}). A unit can only be assigned once per course.'
+            }, status=400)
         
-        return JsonResponse({
-            'id': courseunit.id,
-            'course_id': courseunit.course.id,
-            'course_name': courseunit.course.name,
-            'unit_id': courseunit.unit.id,
-            'unit_code': courseunit.unit.code,
-            'unit_name': courseunit.unit.name,
-            'year_of_study': courseunit.year_of_study,
-            'semester': courseunit.semester,
-            'lecturer_id': courseunit.unit.assigned_lecturer.id if courseunit.unit.assigned_lecturer else None,
-            'lecturer_name': courseunit.unit.assigned_lecturer.get_full_name() if courseunit.unit.assigned_lecturer else None
-        }, status=201)
+        # Create assignment with error handling
+        try:
+            courseunit = CollegeCourseUnit.objects.create(
+                course=course,
+                unit=unit,
+                year_of_study=data['year_of_study'],
+                semester=data['semester'],
+                college=college
+            )
+            
+            return JsonResponse({
+                'id': courseunit.id,
+                'course_id': courseunit.course.id,
+                'course_name': courseunit.course.name,
+                'unit_id': courseunit.unit.id,
+                'unit_code': courseunit.unit.code,
+                'unit_name': courseunit.unit.name,
+                'year_of_study': courseunit.year_of_study,
+                'semester': courseunit.semester,
+                'lecturer_id': courseunit.unit.assigned_lecturer.id if courseunit.unit.assigned_lecturer else None,
+                'lecturer_name': courseunit.unit.assigned_lecturer.get_full_name() if courseunit.unit.assigned_lecturer else None
+            }, status=201)
+        except Exception as e:
+            # Catch IntegrityError and provide user-friendly message
+            from django.db import IntegrityError
+            import traceback
+            
+            # Check if it's an IntegrityError (duplicate entry)
+            if isinstance(e, IntegrityError) or 'IntegrityError' in str(type(e)) or 'Duplicate entry' in str(e):
+                # Try to get the existing assignment for a better error message
+                existing_assignment = CollegeCourseUnit.objects.filter(
+                    course=course,
+                    unit=unit
+                ).first()
+                if existing_assignment:
+                    error_msg = f'This unit is already assigned to this course (Year {existing_assignment.year_of_study}, Semester {existing_assignment.semester}). A unit can only be assigned once per course.'
+                else:
+                    error_msg = 'This unit is already assigned to this course. A unit can only be assigned once per course.'
+                return JsonResponse({'error': error_msg}, status=400)
+            # Re-raise if it's a different error
+            raise
     
     elif request.method in ['PUT', 'PATCH']:
         # Update assignment
@@ -5341,9 +5554,15 @@ def api_courseunits_list(request, college_slug):
             courseunit.year_of_study = data['year_of_study']
         
         if 'semester' in data:
-            if data['semester'] < 1 or data['semester'] > 4:
-                return JsonResponse({'error': 'Semester must be between 1 and 4'}, status=400)
-            courseunit.semester = data['semester']
+            semester_value = int(data['semester'])
+            if semester_value < 1:
+                return JsonResponse({'error': 'Semester must be at least 1'}, status=400)
+            # Validate against college's semesters_per_year
+            if semester_value > college.semesters_per_year:
+                return JsonResponse({
+                    'error': f'Semester ({semester_value}) cannot exceed college semesters per year ({college.semesters_per_year})'
+                }, status=400)
+            courseunit.semester = semester_value
         
         if 'unit_id' in data:
             try:

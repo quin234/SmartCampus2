@@ -341,9 +341,25 @@ def department_create(request):
         if form.is_valid():
             department = form.save(commit=False)
             department.college = college
-            department.save()
-            messages.success(request, 'Department created successfully!')
-            return redirect('accounts:department_list')
+            
+            # Check for duplicate department name within college
+            if Department.objects.filter(college=college, department_name=department.department_name).exists():
+                messages.error(request, f'Department "{department.department_name}" already exists.')
+                return render(request, 'accounts/departments/form.html', {
+                    'form': form,
+                    'title': 'Create Department'
+                })
+            
+            try:
+                department.save()
+                messages.success(request, 'Department created successfully!')
+                return redirect('accounts:department_list')
+            except Exception as e:
+                messages.error(request, f'Error creating department: {str(e)}')
+                return render(request, 'accounts/departments/form.html', {
+                    'form': form,
+                    'title': 'Create Department'
+                })
     else:
         form = DepartmentForm()
     
@@ -352,6 +368,112 @@ def department_create(request):
         'title': 'Create Department'
     }
     return render(request, 'accounts/departments/form.html', context)
+
+
+@login_required
+@can_edit_academic
+def department_edit(request, pk):
+    """Edit an existing department"""
+    college = request.user.college
+    
+    try:
+        department = Department.objects.get(pk=pk, college=college)
+    except Department.DoesNotExist:
+        messages.error(request, 'Department not found.')
+        return redirect('accounts:department_list')
+    
+    if request.method == 'POST':
+        form = DepartmentForm(request.POST, instance=department)
+        if form.is_valid():
+            # Check for duplicate department name (excluding current department)
+            new_name = form.cleaned_data['department_name']
+            if Department.objects.filter(college=college, department_name=new_name).exclude(pk=pk).exists():
+                messages.error(request, f'Department "{new_name}" already exists.')
+                return render(request, 'accounts/departments/form.html', {
+                    'form': form,
+                    'title': 'Edit Department',
+                    'department': department
+                })
+            
+            try:
+                # Save the form - this will update the existing record
+                updated_department = form.save()
+                
+                # Verify the update actually occurred
+                Department.objects.get(pk=pk, department_name=new_name, college=college)
+                messages.success(request, f'Department "{updated_department.department_name}" updated successfully!')
+                return redirect('accounts:department_list')
+            except Department.DoesNotExist:
+                messages.error(request, 'Error: Department update failed. Please try again.')
+                return render(request, 'accounts/departments/form.html', {
+                    'form': form,
+                    'title': 'Edit Department',
+                    'department': department
+                })
+            except Exception as e:
+                messages.error(request, f'Error updating department: {str(e)}')
+                return render(request, 'accounts/departments/form.html', {
+                    'form': form,
+                    'title': 'Edit Department',
+                    'department': department
+                })
+    else:
+        form = DepartmentForm(instance=department)
+    
+    context = {
+        'form': form,
+        'title': 'Edit Department',
+        'department': department
+    }
+    return render(request, 'accounts/departments/form.html', context)
+
+
+@login_required
+@can_edit_academic
+def department_delete(request, pk):
+    """Delete a department - only if it has no courses"""
+    college = request.user.college
+    
+    try:
+        department = Department.objects.get(pk=pk, college=college)
+    except Department.DoesNotExist:
+        messages.error(request, 'Department not found.')
+        return redirect('accounts:department_list')
+    
+    # Check if department has any courses
+    from education.models import CollegeCourse
+    course_count = CollegeCourse.objects.filter(department=department, college=college).count()
+    
+    if course_count > 0:
+        messages.error(request, f'Cannot delete department "{department.department_name}" because it has {course_count} course(s) assigned. Please reassign or delete the courses first.')
+        return redirect('accounts:department_list')
+    
+    if request.method == 'POST':
+        department_name = department.department_name
+        department_id = department.pk
+        
+        try:
+            # Delete the department
+            department.delete()
+            
+            # Verify deletion actually occurred
+            try:
+                Department.objects.get(pk=department_id)
+                # If we get here, deletion failed
+                messages.error(request, 'Error: Department deletion failed. Please try again.')
+                return redirect('accounts:department_list')
+            except Department.DoesNotExist:
+                # Deletion successful - record no longer exists
+                messages.success(request, f'Department "{department_name}" deleted successfully!')
+                return redirect('accounts:department_list')
+        except Exception as e:
+            messages.error(request, f'Error deleting department: {str(e)}')
+            return redirect('accounts:department_list')
+    
+    context = {
+        'department': department
+    }
+    return render(request, 'accounts/departments/delete.html', context)
 
 
 # Fee Structure Views
@@ -815,17 +937,68 @@ def payment_detail(request, pk):
 @login_required
 @accounts_officer_required
 def payment_create(request):
-    """Create a new payment"""
+    """Create a new payment with automatic invoice linking"""
     college = request.user.college
     
     if request.method == 'POST':
         form = PaymentForm(request.POST, college=college)
         if form.is_valid():
-            payment = form.save(commit=False)
-            payment.recorded_by = request.user
-            payment.save()
-            messages.success(request, f'Payment {payment.receipt_number} recorded successfully!')
-            return redirect('accounts:payment_detail', pk=payment.pk)
+            # Get form data
+            student = form.cleaned_data['student']
+            amount_paid = form.cleaned_data['amount_paid']
+            payment_method = form.cleaned_data['payment_method']
+            transaction_code = form.cleaned_data.get('transaction_code')
+            semester_number = form.cleaned_data.get('semester_number')
+            academic_year = form.cleaned_data.get('academic_year')
+            date_paid = form.cleaned_data.get('date_paid')
+            notes = form.cleaned_data.get('notes')
+            
+            # Process payment with automatic invoice linking
+            from accounts.models import process_payment_with_invoice_linking
+            try:
+                result = process_payment_with_invoice_linking(
+                    student=student,
+                    amount_paid=amount_paid,
+                    payment_method=payment_method,
+                    transaction_code=transaction_code,
+                    semester_number=semester_number,
+                    academic_year=academic_year,
+                    date_paid=date_paid,
+                    notes=notes,
+                    recorded_by=request.user
+                )
+                print(f"DEBUG: Payment processing result: success={result.get('success')}, payments={len(result.get('payments', []))}, errors={len(result.get('errors', []))}")
+            except Exception as e:
+                # Handle unexpected errors during payment processing
+                import traceback
+                error_msg = f'An error occurred while processing the payment: {str(e)}'
+                messages.error(request, error_msg)
+                print(f"Payment processing error: {traceback.format_exc()}")
+                # Form will be re-rendered with submitted data
+                result = {'success': False, 'errors': [error_msg], 'warnings': [], 'payments': []}
+            
+            if result.get('success', False):
+                print(f"DEBUG: Payment successful, redirecting...")
+                # Show success message
+                messages.success(request, result['message'])
+                
+                # Show warnings if any
+                for warning in result.get('warnings', []):
+                    messages.warning(request, warning)
+                
+                # Redirect to first payment detail
+                if result.get('payments') and len(result['payments']) > 0:
+                    payment = result['payments'][0]
+                    return redirect('accounts:payment_detail', pk=payment.pk)
+                else:
+                    return redirect('accounts:payment_list')
+            else:
+                # Show errors
+                print(f"DEBUG: Payment processing failed. Result: {result}")
+                for error in result.get('errors', []):
+                    messages.error(request, error)
+                # Form will be re-rendered below with submitted data
+        # If form is invalid, it will be re-rendered with errors below
     else:
         form = PaymentForm(college=college)
         # Pre-fill student if provided in URL
@@ -841,7 +1014,71 @@ def payment_create(request):
         'form': form,
         'title': 'Record Payment'
     }
+    context = {
+        'form': form,
+        'title': 'Record Payment'
+    }
     return render(request, 'accounts/payments/form.html', context)
+
+
+@login_required
+@college_required
+@require_http_methods(["GET"])
+def api_student_pending_invoices(request, student_id):
+    """API endpoint to fetch pending invoices for a student"""
+    try:
+        college = request.user.college
+        student = Student.objects.get(pk=student_id, college=college)
+        
+        # Get all pending/partial/overdue invoices ordered by semester
+        pending_invoices = StudentInvoice.objects.filter(
+            student=student,
+            status__in=['pending', 'partial', 'overdue']
+        ).order_by('semester_number', 'date_created')
+        
+        invoices_data = []
+        for invoice in pending_invoices:
+            total_paid = invoice.get_total_paid()
+            balance = invoice.get_balance()
+            
+            invoices_data.append({
+                'id': invoice.id,
+                'invoice_number': invoice.invoice_number,
+                'semester_number': invoice.semester_number,
+                'academic_year': invoice.academic_year,
+                'fee_amount': str(invoice.fee_amount),
+                'total_paid': str(total_paid),
+                'balance': str(balance),
+                'status': invoice.status,
+                'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
+                'date_created': invoice.date_created.isoformat(),
+            })
+        
+        # Get current semester for the student
+        current_semester = student.get_course_semester_number()
+        
+        return JsonResponse({
+            'success': True,
+            'student': {
+                'id': student.id,
+                'admission_number': student.admission_number,
+                'full_name': student.full_name,
+                'current_semester': current_semester,
+            },
+            'pending_invoices': invoices_data,
+            'total_pending': len(invoices_data),
+        })
+    
+    except Student.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Student not found'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
 
 
 # Report Views
@@ -1369,10 +1606,10 @@ def daily_expenditure_draft(request, pk=None):
             messages.error(request, 'Entry not found.')
         return redirect('accounts:daily_expenditure_draft')
     
-    # Get today's date for filtering drafts
+    # Always show today's date for the main form (no date filtering in main view)
     today = timezone.now().date()
     
-    # Get all draft entries for today (not submitted)
+    # Get all draft entries for today only (not submitted)
     today_drafts = DailyExpenditure.objects.filter(
         college=college,
         created_at__date=today,
@@ -1409,6 +1646,10 @@ def daily_expenditure_draft(request, pk=None):
         if form.is_valid():
             expenditure = form.save()
             messages.success(request, 'Expenditure entry saved successfully.')
+            # Preserve date filter in redirect
+            date_param = request.GET.get('date', '')
+            if date_param:
+                return redirect(f"{reverse('accounts:daily_expenditure_draft')}?date={date_param}")
             return redirect('accounts:daily_expenditure_draft')
     else:
         form = DailyExpenditureForm(
@@ -1444,6 +1685,16 @@ def submit_daily_expenditure(request):
     if not (user.is_principal() or user.is_accounts_officer()):
         return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
     
+    # Get selected date from request body or query parameter
+    import json
+    request_data = {}
+    if request.body:
+        try:
+            request_data = json.loads(request.body)
+        except:
+            pass
+    
+    # Get today's date
     today = timezone.now().date()
     
     # Get all draft entries for today
@@ -1490,8 +1741,12 @@ def daily_expenditure_report(request):
     else:
         college = request.user.college
     
-    # Get selected date from query parameter (default to today)
+    # Get date range from query parameters (for Directors)
+    start_date_str = request.GET.get('start_date', None)
+    end_date_str = request.GET.get('end_date', None)
     selected_date_str = request.GET.get('date', None)
+    
+    # Get selected date (for single date view)
     if selected_date_str:
         try:
             from datetime import datetime
@@ -1501,15 +1756,46 @@ def daily_expenditure_report(request):
     else:
         selected_date = timezone.now().date()
     
-    # Get all submitted expenditures for the selected date
-    expenditures = DailyExpenditure.objects.filter(
-        college=college,
-        created_at__date=selected_date,
-        submitted=True
-    ).order_by('-created_at')
+    # Get date range (for Directors)
+    start_date = None
+    end_date = None
+    if start_date_str:
+        try:
+            from datetime import datetime
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass
     
-    # Calculate total for selected date
-    daily_total = expenditures.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    if end_date_str:
+        try:
+            from datetime import datetime
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+    
+    # If date range is provided, use it; otherwise use selected date
+    if start_date and end_date:
+        # Get all submitted expenditures for the date range
+        expenditures = DailyExpenditure.objects.filter(
+            college=college,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+            submitted=True
+        ).order_by('-created_at')
+        
+        # Calculate total for date range
+        range_total = expenditures.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        daily_total = range_total
+    else:
+        # Get all submitted expenditures for the selected date
+        expenditures = DailyExpenditure.objects.filter(
+            college=college,
+            created_at__date=selected_date,
+            submitted=True
+        ).order_by('-created_at')
+        
+        # Calculate total for selected date
+        daily_total = expenditures.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
     
     # Get all available dates with submitted expenditures (for date picker)
     available_dates = DailyExpenditure.objects.filter(
@@ -1517,27 +1803,142 @@ def daily_expenditure_report(request):
         submitted=True
     ).values_list('created_at__date', flat=True).distinct().order_by('-created_at__date')
     
-    # Get cumulative data for line graph (up to selected date in current semester)
-    # Calculate semester start date (approximate: 3 months ago or start of academic year)
+    # Get cumulative data for line graph
     from datetime import timedelta
     import json
-    semester_start = selected_date - timedelta(days=90)  # Approximate semester start
+    
+    # Use date range if provided, otherwise use selected date with default range
+    if start_date and end_date:
+        graph_start = start_date
+        graph_end = end_date
+    else:
+        # Default to 30 days before selected date
+        graph_start = selected_date - timedelta(days=30)
+        graph_end = selected_date
     
     cumulative_data = DailyExpenditure.get_cumulative_by_date(
         college=college,
-        start_date=semester_start,
-        end_date=selected_date
+        start_date=graph_start,
+        end_date=graph_end
     )
+    
+    # Get monthly totals for bar chart (if date range spans multiple months)
+    monthly_data = []
+    if start_date and end_date:
+        # Group by month
+        from collections import defaultdict
+        monthly_totals = defaultdict(Decimal)
+        
+        monthly_expenditures = DailyExpenditure.objects.filter(
+            college=college,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+            submitted=True
+        )
+        
+        for exp in monthly_expenditures:
+            month_key = exp.created_at.strftime('%Y-%m')
+            monthly_totals[month_key] += exp.amount
+        
+        monthly_data = [
+            {'month': month, 'total': float(total)}
+            for month, total in sorted(monthly_totals.items())
+        ]
     
     context = {
         'expenditures': expenditures,
         'daily_total': daily_total,
         'selected_date': selected_date,
+        'start_date': start_date,
+        'end_date': end_date,
         'available_dates': available_dates,
         'cumulative_data': json.dumps(cumulative_data),  # Convert to JSON string for template
+        'monthly_data': json.dumps(monthly_data),  # Monthly totals for bar chart
     }
     
     return render(request, 'accounts/daily_expenditure/report.html', context)
+
+
+@login_required
+@college_required
+@require_http_methods(["GET"])
+def api_daily_expenditure_records(request):
+    """
+    API endpoint to fetch daily expenditure records for a specific date.
+    Returns both draft and submitted entries.
+    """
+    college = request.user.college
+    user = request.user
+    
+    # Check permissions: Only Principal and Accounts Officer can access
+    if not (user.is_principal() or user.is_accounts_officer()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+    
+    # Get date from query parameter
+    date_str = request.GET.get('date', None)
+    if not date_str:
+        return JsonResponse({'success': False, 'error': 'Date parameter is required'}, status=400)
+    
+    try:
+        from datetime import datetime
+        selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return JsonResponse({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+    
+    # Get draft entries for the selected date
+    drafts = DailyExpenditure.objects.filter(
+        college=college,
+        created_at__date=selected_date,
+        submitted=False
+    ).order_by('-created_at')
+    
+    # Get submitted entries for the selected date
+    submitted = DailyExpenditure.objects.filter(
+        college=college,
+        created_at__date=selected_date,
+        submitted=True
+    ).order_by('-created_at')
+    
+    # Calculate totals
+    draft_total = drafts.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    submitted_total = submitted.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    
+    # Serialize draft entries
+    drafts_data = []
+    for draft in drafts:
+        drafts_data.append({
+            'id': draft.id,
+            'description': draft.description,
+            'amount': str(draft.amount),
+            'created_at': draft.created_at.strftime('%H:%M'),
+            'entered_by': draft.entered_by.get_full_name() if draft.entered_by else 'N/A',
+            'role': draft.get_role_display() if draft.role else 'N/A',
+        })
+    
+    # Serialize submitted entries
+    submitted_data = []
+    for entry in submitted:
+        submitted_data.append({
+            'id': entry.id,
+            'description': entry.description,
+            'amount': str(entry.amount),
+            'created_at': entry.created_at.strftime('%H:%M'),
+            'entered_by': entry.entered_by.get_full_name() if entry.entered_by else 'N/A',
+            'role': entry.get_role_display() if entry.role else 'N/A',
+            'submitted_at': entry.submitted_at.strftime('%Y-%m-%d %H:%M') if entry.submitted_at else None,
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'date': selected_date.strftime('%Y-%m-%d'),
+        'date_display': selected_date.strftime('%B %d, %Y'),
+        'drafts': drafts_data,
+        'submitted': submitted_data,
+        'draft_total': str(draft_total),
+        'submitted_total': str(submitted_total),
+        'draft_count': len(drafts_data),
+        'submitted_count': len(submitted_data),
+    })
 
 
 @login_required
