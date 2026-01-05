@@ -1721,19 +1721,9 @@ def api_lecturers_list(request, college_slug):
         if data.get('email') and CustomUser.objects.filter(email=data.get('email')).exists():
             return JsonResponse({'error': 'Email already exists'}, status=400)
         
-        # Determine role - only college admins can set role
-        role = 'lecturer'  # Default
-        if data.get('role'):
-            # Only allow role setting if user is college admin
-            if request.user.is_college_admin():
-                valid_roles = ['lecturer', 'college_admin', 'principal', 'registrar', 'accounts_officer', 'reception']
-                if data.get('role') in valid_roles:
-                    role = data.get('role')
-                else:
-                    return JsonResponse({'error': f'Invalid role. Must be one of: {", ".join(valid_roles)}'}, status=400)
-            else:
-                # Non-admins can only create lecturers
-                role = 'lecturer'
+        # Always assign 'lecturer' role when creating lecturer accounts through this endpoint
+        # This ensures consistency and prevents incorrect role assignment
+        role = 'lecturer'
         
         lecturer = CustomUser.objects.create_user(
             username=data.get('username', ''),

@@ -7329,6 +7329,10 @@
         
         async function loadStudentCourseOptions() {
             const courseSelect = document.getElementById('student-course');
+            const courseInput = document.getElementById('student-course-search');
+            const optionsList = document.getElementById('student-course-options-list');
+            const optionsContainer = document.getElementById('student-course-options');
+            
             if (!courseSelect) return;
             
             try {
@@ -7338,21 +7342,200 @@
                 // Store courses data for validation
                 studentCoursesData = data.results || [];
                 
-                // Clear existing options except the first one
+                // Clear existing options
                 courseSelect.innerHTML = '<option value="">Select Course</option>';
+                if (optionsList) {
+                    optionsList.innerHTML = '';
+                }
                 
-                // Add courses
+                // Add courses to both select (for form submission) and dropdown
                 if (studentCoursesData.length > 0) {
                     studentCoursesData.forEach(course => {
+                        // Add to hidden select for form submission
                         const option = document.createElement('option');
                         option.value = course.id;
                         option.textContent = course.name;
                         option.setAttribute('data-duration', course.duration || course.duration_years || 5);
                         courseSelect.appendChild(option);
+                        
+                        // Add to visible dropdown
+                        if (optionsList) {
+                            const dropdownOption = document.createElement('div');
+                            dropdownOption.className = 'searchable-dropdown-option';
+                            dropdownOption.dataset.value = course.id;
+                            dropdownOption.dataset.duration = course.duration || course.duration_years || 5;
+                            dropdownOption.textContent = course.name;
+                            dropdownOption.addEventListener('click', function() {
+                                selectCourseOption(course.id, course.name);
+                            });
+                            optionsList.appendChild(dropdownOption);
+                        }
                     });
+                } else {
+                    if (optionsList) {
+                        optionsList.innerHTML = '<div class="searchable-dropdown-no-results">No courses available</div>';
+                    }
                 }
+                
+                // Sync display if a course is already selected
+                syncCourseDropdownDisplay();
             } catch (error) {
                 console.error('Error loading courses for student:', error);
+                if (optionsList) {
+                    optionsList.innerHTML = '<div class="searchable-dropdown-no-results">Error loading courses</div>';
+                }
+            }
+        }
+        
+        function selectCourseOption(courseId, courseName) {
+            const courseSelect = document.getElementById('student-course');
+            const courseInput = document.getElementById('student-course-search');
+            const optionsContainer = document.getElementById('student-course-options');
+            const wrapper = document.getElementById('student-course-wrapper');
+            
+            // Update hidden select
+            courseSelect.value = courseId;
+            
+            // Update visible input
+            if (courseInput) {
+                courseInput.value = courseName;
+            }
+            
+            // Hide dropdown
+            if (optionsContainer) {
+                optionsContainer.style.display = 'none';
+            }
+            if (wrapper) {
+                wrapper.classList.remove('active');
+            }
+            
+            // Update selected state in options
+            document.querySelectorAll('#student-course-options-list .searchable-dropdown-option').forEach(opt => {
+                opt.classList.remove('selected');
+                if (opt.dataset.value === courseId) {
+                    opt.classList.add('selected');
+                }
+            });
+            
+            // Trigger change event on select for existing handlers
+            const changeEvent = new Event('change', { bubbles: true });
+            courseSelect.dispatchEvent(changeEvent);
+        }
+        
+        // Function to sync visible input with hidden select value (for programmatic updates)
+        function syncCourseDropdownDisplay() {
+            const courseSelect = document.getElementById('student-course');
+            const courseInput = document.getElementById('student-course-search');
+            
+            if (!courseSelect || !courseInput) return;
+            
+            const selectedCourseId = courseSelect.value;
+            if (selectedCourseId) {
+                // Find the course name from the options
+                const option = courseSelect.querySelector(`option[value="${selectedCourseId}"]`);
+                if (option) {
+                    courseInput.value = option.textContent;
+                } else {
+                    // Try to find from studentCoursesData
+                    const course = studentCoursesData.find(c => c.id === parseInt(selectedCourseId));
+                    if (course) {
+                        courseInput.value = course.name;
+                    }
+                }
+            } else {
+                courseInput.value = '';
+            }
+        }
+        
+        function initializeStudentCourseDropdown() {
+            const courseInput = document.getElementById('student-course-search');
+            const optionsContainer = document.getElementById('student-course-options');
+            const optionsList = document.getElementById('student-course-options-list');
+            const wrapper = document.getElementById('student-course-wrapper');
+            
+            if (!courseInput || !optionsContainer) return;
+            
+            // Toggle dropdown on input click/focus
+            courseInput.addEventListener('focus', function() {
+                optionsContainer.style.display = 'block';
+                wrapper.classList.add('active');
+                filterCourseOptions();
+            });
+            
+            // Search/filter functionality
+            courseInput.addEventListener('input', function() {
+                filterCourseOptions();
+                optionsContainer.style.display = 'block';
+                wrapper.classList.add('active');
+            });
+            
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(e) {
+                if (!wrapper.contains(e.target)) {
+                    optionsContainer.style.display = 'none';
+                    wrapper.classList.remove('active');
+                }
+            });
+            
+            // Keyboard navigation
+            courseInput.addEventListener('keydown', function(e) {
+                const options = Array.from(optionsList.querySelectorAll('.searchable-dropdown-option:not(.hidden)'));
+                const selectedIndex = options.findIndex(opt => opt.classList.contains('selected'));
+                
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const nextIndex = selectedIndex < options.length - 1 ? selectedIndex + 1 : 0;
+                    options.forEach(opt => opt.classList.remove('selected'));
+                    if (options[nextIndex]) {
+                        options[nextIndex].classList.add('selected');
+                        options[nextIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                    }
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    const prevIndex = selectedIndex > 0 ? selectedIndex - 1 : options.length - 1;
+                    options.forEach(opt => opt.classList.remove('selected'));
+                    if (options[prevIndex]) {
+                        options[prevIndex].classList.add('selected');
+                        options[prevIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                    }
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const selected = options.find(opt => opt.classList.contains('selected'));
+                    if (selected) {
+                        selected.click();
+                    }
+                } else if (e.key === 'Escape') {
+                    optionsContainer.style.display = 'none';
+                    wrapper.classList.remove('active');
+                }
+            });
+        }
+        
+        function filterCourseOptions() {
+            const searchTerm = document.getElementById('student-course-search').value.toLowerCase();
+            const options = document.querySelectorAll('#student-course-options-list .searchable-dropdown-option');
+            const noResults = document.querySelector('#student-course-options-list .searchable-dropdown-no-results');
+            
+            let visibleCount = 0;
+            
+            options.forEach(option => {
+                const text = option.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    option.classList.remove('hidden');
+                    visibleCount++;
+                } else {
+                    option.classList.add('hidden');
+                }
+            });
+            
+            // Show/hide no results message
+            if (noResults) {
+                noResults.style.display = visibleCount === 0 && searchTerm ? 'block' : 'none';
+            } else if (visibleCount === 0 && searchTerm) {
+                const noResultsDiv = document.createElement('div');
+                noResultsDiv.className = 'searchable-dropdown-no-results';
+                noResultsDiv.textContent = 'No courses found';
+                document.getElementById('student-course-options-list').appendChild(noResultsDiv);
             }
         }
 
@@ -7428,12 +7611,9 @@
             const courseSelect = document.getElementById('student-course');
             const yearInput = document.getElementById('student-year');
             if (courseSelect && yearInput) {
-                // Remove existing listeners by cloning
-                const newCourseSelect = courseSelect.cloneNode(true);
-                courseSelect.parentNode.replaceChild(newCourseSelect, courseSelect);
-                
-                newCourseSelect.addEventListener('change', function() {
-                    const selectedCourseId = this.value;
+                // Function to handle course selection change
+                function handleCourseSelectionChange() {
+                    const selectedCourseId = courseSelect.value;
                     if (selectedCourseId) {
                         const selectedCourse = studentCoursesData.find(c => c.id === parseInt(selectedCourseId));
                         if (selectedCourse) {
@@ -7458,7 +7638,28 @@
                             'Selecting a course will validate year of study against course duration';
                         document.getElementById('error-student-year').textContent = '';
                     }
+                }
+                
+                // Remove existing listeners by cloning (to prevent duplicates)
+                const newCourseSelect = courseSelect.cloneNode(true);
+                courseSelect.parentNode.replaceChild(newCourseSelect, courseSelect);
+                
+                // Re-get the select element after cloning
+                const updatedCourseSelect = document.getElementById('student-course');
+                updatedCourseSelect.addEventListener('change', function() {
+                    handleCourseSelectionChange();
+                    // Sync the visible dropdown display
+                    syncCourseDropdownDisplay();
                 });
+                
+                // Also watch for programmatic value changes (for edit mode)
+                const observer = new MutationObserver(function(mutations) {
+                    syncCourseDropdownDisplay();
+                });
+                observer.observe(updatedCourseSelect, { attributes: true, attributeFilter: ['value'] });
+                
+                // Also sync on input event (for programmatic changes)
+                updatedCourseSelect.addEventListener('input', syncCourseDropdownDisplay);
             }
             
             // Show submit button
@@ -8386,24 +8587,16 @@
                 btnText.textContent = 'Create Lecturer';
             }
             
-            // Hide role field for new lecturers (only admins can set role on creation)
+            // Hide role field for new lecturers - all new lecturer accounts are automatically assigned 'lecturer' role
             const roleGroup = document.getElementById('lecturer-role-group');
             const roleSelect = document.getElementById('lecturer-role');
             const confirmationDiv = document.getElementById('lecturer-role-confirmation');
-            const isAdmin = window.IS_COLLEGE_ADMIN || false;
             
+            // Always hide role field when creating new lecturer accounts
             if (roleGroup && roleSelect) {
-                if (isAdmin) {
-                    roleGroup.style.display = 'block';
-                    roleSelect.value = 'lecturer'; // Default to lecturer
-                    roleSelect.disabled = false;
-                    roleSelect.dataset.originalRole = 'lecturer';
-                    if (typeof updateLecturerRoleBadge === 'function') {
-                        updateLecturerRoleBadge('lecturer');
-                    }
-                } else {
-                    roleGroup.style.display = 'none';
-                }
+                roleGroup.style.display = 'none';
+                roleSelect.value = 'lecturer'; // Always default to lecturer
+                roleSelect.dataset.originalRole = 'lecturer';
             }
             
             if (confirmationDiv) {
@@ -8664,12 +8857,9 @@
                     }
                 }
                 
-                // Add role to formData if creating new lecturer (only for admins)
+                // Always set role to 'lecturer' when creating new lecturer accounts
                 if (!editId) {
-                    const roleSelect = document.getElementById('lecturer-role');
-                    if (roleSelect && window.IS_COLLEGE_ADMIN) {
-                        formData.role = roleSelect.value || 'lecturer';
-                    }
+                    formData.role = 'lecturer'; // Automatically assign lecturer role
                 }
                 
                 // Update lecturer data
@@ -14672,6 +14862,11 @@
         window.editStudent = async function(id) {
             document.getElementById('student-modal-title').textContent = 'Edit Student';
             await originalEditStudent(id);
+            // Sync the course dropdown display after edit loads data
+            setTimeout(() => {
+                syncCourseDropdownDisplay();
+                initializeStudentCourseDropdown();
+            }, 100);
         };
 
         const originalEditCourse = window.editCourse;
