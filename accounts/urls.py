@@ -25,6 +25,8 @@ urlpatterns = [
     path('fee-structure/fee-items/', views.fee_item_list, name='fee_item_list'),
     path('fee-structure/fee-items/create/', views.fee_item_create, name='fee_item_create'),
     path('fee-structure/fee-items/<int:fee_item_id>/edit/', views.fee_item_edit, name='fee_item_edit'),
+    path('fee-structure/fee-items/<int:fee_item_id>/delete/', views.fee_item_delete, name='fee_item_delete'),
+    path('fee-structure/fee-items/<int:fee_item_id>/check-usage/', views.fee_item_check_usage, name='fee_item_check_usage'),
     
     # Payments
     path('payments/', views.payment_list, name='payment_list'),

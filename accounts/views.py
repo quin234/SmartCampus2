@@ -880,6 +880,51 @@ def fee_item_edit(request, fee_item_id):
         }, status=400)
 
 
+@login_required
+@director_required
+@require_http_methods(["POST"])
+def fee_item_delete(request, fee_item_id):
+    """Delete a fee item - Director only"""
+    fee_item = get_object_or_404(FeeItem, pk=fee_item_id)
+    
+    # Check if fee item is used in any course fee structures
+    if CourseFeeStructure.objects.filter(fee_item=fee_item).exists():
+        return JsonResponse({
+            'success': False,
+            'message': f'Cannot delete "{fee_item.name}" because it is currently used in fee structures. Please remove it from all course fee structures first.'
+        }, status=400)
+    
+    try:
+        fee_item_name = fee_item.name
+        fee_item.delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Fee item "{fee_item_name}" deleted successfully!'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error deleting fee item: {str(e)}'
+        }, status=400)
+
+
+@login_required
+@director_required
+@require_http_methods(["GET"])
+def fee_item_check_usage(request, fee_item_id):
+    """Check if a fee item is used in any course fee structures"""
+    fee_item = get_object_or_404(FeeItem, pk=fee_item_id)
+    
+    is_used = CourseFeeStructure.objects.filter(fee_item=fee_item).exists()
+    
+    return JsonResponse({
+        'is_used': is_used,
+        'fee_item_id': fee_item_id,
+        'fee_item_name': fee_item.name
+    })
+
+
 # Payment Views
 @login_required
 @college_required

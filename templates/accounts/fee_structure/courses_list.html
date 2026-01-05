@@ -24,11 +24,33 @@
 {% endblock %}
 
 {% block content %}
-<div class="content-card">
-    <div class="card-header">
-        <h3 class="card-title"><i class="fas fa-book"></i> Courses</h3>
+<!-- Toast Container -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- Confirmation Dialog -->
+<div id="confirm-dialog" class="confirm-dialog-overlay" style="display: none;">
+    <div class="confirm-dialog">
+        <div class="confirm-dialog-header">
+            <h3><i class="fas fa-exclamation-triangle"></i> Confirm Action</h3>
+        </div>
+        <div class="confirm-dialog-body">
+            <p id="confirm-message"></p>
+        </div>
+        <div class="confirm-dialog-footer">
+            <button class="btn btn-secondary" onclick="closeConfirmDialog()">Cancel</button>
+            <button class="btn btn-danger" id="confirm-ok-btn">Confirm</button>
+        </div>
     </div>
-    <div class="card-body">
+</div>
+
+<!-- Fee Structure Grid Layout -->
+<div class="fee-structure-grid">
+    <!-- Courses Card -->
+    <div class="content-card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-book"></i> Courses</h3>
+        </div>
+        <div class="card-body">
         <!-- Search Box -->
         <div class="search-container" style="margin-bottom: 20px;">
             <div class="search-box" style="position: relative;">
@@ -89,6 +111,34 @@
                 <p>No courses found. Please create courses first.</p>
             </div>
         {% endif %}
+        </div>
+    </div>
+    
+    <!-- Defined Fee Times Widget -->
+    <div class="content-card fee-times-widget">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-clock"></i> Defined Fee Times</h3>
+        </div>
+        <div class="card-body">
+            <div class="fee-times-table-container">
+                <table class="fee-times-table" id="feeTimesTable">
+                    <thead>
+                        <tr>
+                            <th>Fee Item</th>
+                            <th>Description</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="feeTimesTableBody">
+                        <tr>
+                            <td colspan="3" class="loading-row">
+                                <i class="fas fa-spinner fa-spin"></i> Loading...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -503,6 +553,258 @@
         margin-bottom: 12px;
     }
     
+    /* Fee Structure Grid Layout */
+    .fee-structure-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+    
+    /* Fee Times Widget */
+    .fee-times-widget {
+        max-width: 100%;
+    }
+    
+    .fee-times-table-container {
+        max-height: 400px;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+    
+    .fee-times-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    
+    .fee-times-table thead {
+        background: var(--bg-card-hover, #f5f5f5);
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    
+    .fee-times-table th {
+        padding: 10px 12px;
+        text-align: left;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-primary, #1a1a1a);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid var(--border-color, #e0e0e0);
+        white-space: nowrap;
+    }
+    
+    .fee-times-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border-color, #e0e0e0);
+        color: var(--text-primary, #1a1a1a);
+        vertical-align: middle;
+    }
+    
+    .fee-times-table tbody tr:hover {
+        background-color: var(--bg-card-hover, #f5f5f5);
+    }
+    
+    .fee-times-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .fee-times-table .fee-item-name {
+        font-weight: 600;
+        color: var(--text-primary, #1a1a1a);
+    }
+    
+    .fee-times-table .fee-item-desc {
+        font-size: 12px;
+        color: var(--text-gray, #666);
+        margin-top: 4px;
+    }
+    
+    .fee-times-table .actions-cell {
+        white-space: nowrap;
+    }
+    
+    .fee-times-table .action-btn {
+        background: none;
+        border: none;
+        padding: 6px 10px;
+        margin: 0 4px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.2s;
+        font-size: 14px;
+    }
+    
+    .fee-times-table .action-btn.edit-btn {
+        color: var(--primary-blue, #007bff);
+    }
+    
+    .fee-times-table .action-btn.edit-btn:hover {
+        background: rgba(0, 123, 255, 0.1);
+    }
+    
+    .fee-times-table .action-btn.delete-btn {
+        color: #dc3545;
+    }
+    
+    .fee-times-table .action-btn.delete-btn:hover {
+        background: rgba(220, 53, 69, 0.1);
+    }
+    
+    .fee-times-table .loading-row,
+    .fee-times-table .empty-state {
+        text-align: center;
+        padding: 20px;
+        color: var(--text-gray, #666);
+    }
+    
+    /* Toast Container */
+    .toast-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .toast {
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color, #e0e0e0);
+        border-radius: 8px;
+        padding: 12px 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 300px;
+        max-width: 400px;
+        animation: slideInRight 0.3s ease;
+    }
+    
+    .toast.success {
+        border-left: 4px solid #28a745;
+    }
+    
+    .toast.error {
+        border-left: 4px solid #dc3545;
+    }
+    
+    .toast.warning {
+        border-left: 4px solid #ffc107;
+    }
+    
+    .toast.info {
+        border-left: 4px solid #17a2b8;
+    }
+    
+    .toast i {
+        font-size: 18px;
+    }
+    
+    .toast.success i {
+        color: #28a745;
+    }
+    
+    .toast.error i {
+        color: #dc3545;
+    }
+    
+    .toast.warning i {
+        color: #ffc107;
+    }
+    
+    .toast.info i {
+        color: #17a2b8;
+    }
+    
+    .toast span {
+        flex: 1;
+        color: var(--text-primary, #1a1a1a);
+        font-size: 14px;
+    }
+    
+    @keyframes slideInRight {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    /* Confirmation Dialog */
+    .confirm-dialog-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10001;
+    }
+    
+    .confirm-dialog {
+        background: var(--bg-card, #ffffff);
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        min-width: 400px;
+        max-width: 500px;
+    }
+    
+    .confirm-dialog-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--border-color, #e0e0e0);
+    }
+    
+    .confirm-dialog-header h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text-primary, #1a1a1a);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .confirm-dialog-header i {
+        color: #ffc107;
+    }
+    
+    .confirm-dialog-body {
+        padding: 24px;
+    }
+    
+    .confirm-dialog-body p {
+        margin: 0;
+        color: var(--text-primary, #1a1a1a);
+        font-size: 14px;
+        line-height: 1.5;
+    }
+    
+    .confirm-dialog-footer {
+        padding: 16px 24px;
+        border-top: 1px solid var(--border-color, #e0e0e0);
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+    }
+    
+    @media (max-width: 1200px) {
+        .fee-structure-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    
     @media (max-width: 768px) {
         .modal-dialog {
             max-width: 95%;
@@ -524,6 +826,10 @@
         .fee-item-amount {
             width: 100%;
         }
+        
+        .fee-times-table-container {
+            max-height: 300px;
+        }
     }
 </style>
 
@@ -535,7 +841,7 @@ let currentSemesterNumber = null;
 function openFeeStructureDialog(courseId, courseName) {
     // Check if user is director - prevent non-directors from opening dialog
     {% if not request.user.is_director %}
-    alert('Access Denied: Only Directors can edit fee structure.');
+    showToast('error', 'Access Denied: Only Directors can edit fee structure.');
     return;
     {% endif %}
     
@@ -545,7 +851,7 @@ function openFeeStructureDialog(courseId, courseName) {
     // Get course data from the table
     const courseRow = document.querySelector(`tr[data-course-id="${courseId}"]`);
     if (!courseRow) {
-        alert('Course data not found');
+        showToast('error', 'Course data not found');
         return;
     }
     
@@ -727,12 +1033,12 @@ function closeFeeStructureDialog() {
 
 function saveFeeStructure() {
     if (!currentCourseId) {
-        alert('No course selected');
+        showToast('warning', 'No course selected');
         return;
     }
     
     if (!currentSemesterNumber) {
-        alert('Please select a semester first');
+        showToast('warning', 'Please select a semester first');
         return;
     }
     
@@ -768,16 +1074,16 @@ function saveFeeStructure() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
+            showToast('success', data.message);
             // Reload fee structure for current semester to show saved values
             loadFeeStructureForSemester();
         } else {
-            alert('Error: ' + data.message);
+            showToast('error', 'Error: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error saving fee structure:', error);
-        alert('Error saving fee structure. Please try again.');
+        showToast('error', 'Error saving fee structure. Please try again.');
     })
     .finally(() => {
         saveButton.innerHTML = originalText;
@@ -838,7 +1144,7 @@ function openFeeItemDialog(feeItemId = null) {
             })
             .catch(error => {
                 console.error('Error loading fee item:', error);
-                alert('Error loading fee item. Please try again.');
+                showToast('error', 'Error loading fee item. Please try again.');
             });
     } else {
         // Create mode
@@ -855,12 +1161,170 @@ function closeFeeItemDialog() {
     document.getElementById('feeItemForm').reset();
 }
 
+// Load Fee Times (Fee Items) into the widget table
+function loadFeeTimesTable() {
+    const tbody = document.getElementById('feeTimesTableBody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="3" class="loading-row"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    
+    fetch('/accounts/fee-structure/fee-items/')
+        .then(response => response.json())
+        .then(data => {
+            tbody.innerHTML = '';
+            
+            if (data.fee_items && data.fee_items.length > 0) {
+                data.fee_items.forEach(item => {
+                    const row = document.createElement('tr');
+                    const canEdit = data.can_edit || false;
+                    
+                    row.innerHTML = `
+                        <td>
+                            <div class="fee-item-name">${escapeHtml(item.name)}</div>
+                            ${item.description ? `<div class="fee-item-desc">${escapeHtml(item.description)}</div>` : ''}
+                        </td>
+                        <td>
+                            ${item.description ? escapeHtml(item.description) : '<span style="color: var(--text-gray, #999); font-style: italic;">No description</span>'}
+                        </td>
+                        <td class="actions-cell">
+                            ${canEdit ? `
+                                <button class="action-btn edit-btn" onclick="openFeeItemDialog(${item.id})" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="action-btn delete-btn" onclick="deleteFeeItem(${item.id}, '${escapeHtml(item.name)}')" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            ` : '<span style="color: var(--text-gray, #999); font-size: 12px;">View only</span>'}
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } else {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <p>No fee items defined yet.</p>
+                        </td>
+                    </tr>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading fee items:', error);
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="empty-state" style="color: #dc3545;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Error loading fee items. Please try again.</p>
+                    </td>
+                </tr>
+            `;
+        });
+}
+
+// Delete Fee Item
+function deleteFeeItem(feeItemId, feeItemName) {
+    showConfirm(
+        `Are you sure you want to delete "${feeItemName}"?\n\nThis action cannot be undone.`,
+        function() {
+            proceedWithDelete(feeItemId, feeItemName);
+        }
+    );
+}
+
+function proceedWithDelete(feeItemId, feeItemName) {
+    
+    // Check if fee item is used in any course fee structures
+    fetch(`/accounts/fee-structure/fee-items/${feeItemId}/check-usage/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.is_used) {
+                showToast('error', `Cannot delete "${feeItemName}" because it is currently used in fee structures.\n\nPlease remove it from all course fee structures first.`);
+                return;
+            }
+            
+            // Proceed with deletion
+            fetch(`/accounts/fee-structure/fee-items/${feeItemId}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('success', data.message || 'Fee item deleted successfully');
+                    // Reload the table
+                    loadFeeTimesTable();
+                    // Also reload the fee items list dialog if it's open
+                    if (document.getElementById('feeItemsListDialog').style.display === 'flex') {
+                        loadFeeItemsList();
+                    }
+                } else {
+                    showToast('error', 'Error deleting fee item: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting fee item:', error);
+                showToast('error', 'Error deleting fee item. Please try again.');
+            });
+        })
+        .catch(error => {
+            console.error('Error checking fee item usage:', error);
+            // If check fails, try to delete anyway
+            fetch(`/accounts/fee-structure/fee-items/${feeItemId}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('success', data.message || 'Fee item deleted successfully');
+                    loadFeeTimesTable();
+                    if (document.getElementById('feeItemsListDialog').style.display === 'flex') {
+                        loadFeeItemsList();
+                    }
+                } else {
+                    showToast('error', 'Error deleting fee item: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting fee item:', error);
+                showToast('error', 'Error deleting fee item. Please try again.');
+            });
+        });
+}
+
+// Load fee times table on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadFeeTimesTable();
+    
+    // Reload table after saving a fee item
+    const originalSaveFeeItem = window.saveFeeItem;
+    if (originalSaveFeeItem) {
+        window.saveFeeItem = function() {
+            originalSaveFeeItem.apply(this, arguments);
+            // Reload table after successful save
+            setTimeout(() => {
+                loadFeeTimesTable();
+            }, 500);
+        };
+    }
+});
+
 function saveFeeItem() {
     const name = document.getElementById('feeItemName').value.trim();
     const description = document.getElementById('feeItemDescription').value.trim();
     
     if (!name) {
-        alert('Name is required');
+        showToast('warning', 'Name is required');
         return;
     }
     
@@ -887,8 +1351,10 @@ function saveFeeItem() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
+            showToast('success', data.message);
             closeFeeItemDialog();
+            // Reload fee times table
+            loadFeeTimesTable();
             // If fee items list dialog is open, reload it
             if (document.getElementById('feeItemsListDialog').style.display !== 'none') {
                 loadFeeItemsList();
@@ -901,12 +1367,12 @@ function saveFeeItem() {
                 }
             }
         } else {
-            alert('Error: ' + data.message);
+            showToast('error', 'Error: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error saving fee item:', error);
-        alert('Error saving fee item. Please try again.');
+        showToast('error', 'Error saving fee item. Please try again.');
     })
     .finally(() => {
         saveButton.innerHTML = originalText;
@@ -969,6 +1435,78 @@ document.getElementById('feeItemDialog').addEventListener('click', function(e) {
 document.getElementById('feeItemsListDialog').addEventListener('click', function(e) {
     if (e.target === this) {
         closeFeeItemsListDialog();
+    }
+});
+
+// Toast notification function
+function showToast(type, message, duration = 3000) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const icon = {
+        success: 'fa-check-circle',
+        error: 'fa-exclamation-circle',
+        info: 'fa-info-circle',
+        warning: 'fa-exclamation-triangle'
+    }[type] || 'fa-info-circle';
+    
+    toast.innerHTML = `
+        <i class="fas ${icon}"></i>
+        <span>${message}</span>
+    `;
+    
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(100%)';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+// Confirmation dialog
+let confirmCallback = null;
+
+function showConfirm(message, onConfirm) {
+    const dialog = document.getElementById('confirm-dialog');
+    const messageEl = document.getElementById('confirm-message');
+    const okBtn = document.getElementById('confirm-ok-btn');
+    
+    messageEl.textContent = message;
+    confirmCallback = onConfirm;
+    
+    // Remove previous event listeners
+    const newOkBtn = okBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+    
+    newOkBtn.addEventListener('click', function() {
+        if (confirmCallback) {
+            confirmCallback();
+        }
+        closeConfirmDialog();
+    });
+    
+    dialog.style.display = 'flex';
+}
+
+function closeConfirmDialog() {
+    const dialog = document.getElementById('confirm-dialog');
+    dialog.style.display = 'none';
+    confirmCallback = null;
+}
+
+// Close confirmation dialog when clicking outside
+document.getElementById('confirm-dialog').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeConfirmDialog();
     }
 });
 
