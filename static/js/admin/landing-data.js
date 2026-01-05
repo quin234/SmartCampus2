@@ -1703,56 +1703,79 @@
     }
 
     function renderLecturersTable() {
-        const tbody = document.getElementById('lecturers-tbody');
-        if (!tbody) return;
+        const container = document.getElementById('lecturers-cards-container');
+        if (!container) return;
 
         if (state.lecturers.data.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="6" class="empty-state">
-                        <i class="fas fa-chalkboard-teacher"></i>
-                        <p>No lecturers found</p>
-                    </td>
-                </tr>
+            container.innerHTML = `
+                <div class="empty-state" style="grid-column: 1/-1; text-align: center; padding: 60px 20px;">
+                    <i class="fas fa-chalkboard-teacher" style="font-size: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+                    <p style="color: var(--text-secondary); font-size: 16px;">No lecturers found</p>
+                </div>
             `;
             return;
         }
 
         const isAdmin = window.IS_COLLEGE_ADMIN || false;
         
-        tbody.innerHTML = state.lecturers.data.map(lecturer => {
-            const isActive = lecturer.is_active !== false; // Default to true if not specified
-            const statusClass = isActive ? 'badge-success' : 'badge-warning';
-            const statusLabel = isActive ? 'Active' : 'Suspended';
-            
-            return `
-            <tr data-id="${lecturer.id}">
-                <td>${lecturer.full_name || '-'}</td>
-                <td>${lecturer.email || '-'}</td>
-                <td>${lecturer.phone || '-'}</td>
-                <td>${lecturer.assigned_units_count || 0}</td>
-                <td><span class="badge ${statusClass}">${statusLabel}</span></td>
-                <td class="actions">
-                    ${isAdmin ? `
-                        <button class="btn-icon btn-edit" onclick="editLecturer(${lecturer.id})" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        ${isActive ? 
-                            `<button class="btn-icon btn-warning" onclick="updateLecturerStatus(${lecturer.id}, 'suspend')" title="Suspend">
-                                <i class="fas fa-ban"></i>
-                            </button>` :
-                            `<button class="btn-icon btn-success" onclick="updateLecturerStatus(${lecturer.id}, 'activate')" title="Activate">
-                                <i class="fas fa-check-circle"></i>
-                            </button>`
-                        }
-                        <button class="btn-icon btn-delete" onclick="deleteLecturer(${lecturer.id})" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    ` : '<span class="text-muted">View only</span>'}
-                </td>
-            </tr>
+        container.innerHTML = `
+            <div class="lecturers-grid">
+                ${state.lecturers.data.map(lecturer => {
+                    const isActive = lecturer.is_active !== false;
+                    const statusClass = isActive ? 'active' : 'suspended';
+                    const statusLabel = isActive ? 'Active' : 'Suspended';
+                    const staffNumber = lecturer.username || '-';
+                    
+                    return `
+                        <div class="lecturer-card" data-id="${lecturer.id}" onclick="handleLecturerCardClick(event, ${lecturer.id})">
+                            <div class="lecturer-card-body">
+                                <div class="lecturer-card-content">
+                                    <div class="lecturer-card-name">${lecturer.full_name || '-'}</div>
+                                    <div class="lecturer-card-details">
+                                        <i class="fas fa-envelope" style="margin-right: 6px; color: var(--text-muted);"></i>
+                                        ${lecturer.email || '-'}
+                                    </div>
+                                    <div class="lecturer-card-details">
+                                        <i class="fas fa-phone" style="margin-right: 6px; color: var(--text-muted);"></i>
+                                        ${lecturer.phone || '-'}
+                                    </div>
+                                    <div class="lecturer-card-staff">
+                                        <i class="fas fa-id-badge" style="margin-right: 6px;"></i>
+                                        Staff: ${staffNumber}
+                                    </div>
+                                    <div class="lecturer-card-status ${statusClass}">
+                                        <i class="fas fa-circle" style="font-size: 8px;"></i>
+                                        ${statusLabel}
+                                    </div>
+                                    <div style="margin-top: 12px; font-size: 13px; color: var(--text-secondary);">
+                                        <i class="fas fa-book" style="margin-right: 6px;"></i>
+                                        ${lecturer.assigned_units_count || 0} unit${lecturer.assigned_units_count !== 1 ? 's' : ''} assigned
+                                    </div>
+                                </div>
+                                ${isAdmin ? `
+                                    <div class="lecturer-card-actions" onclick="event.stopPropagation()">
+                                        <button class="lecturer-card-action-btn btn-edit" onclick="editLecturer(${lecturer.id})" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        ${isActive ? 
+                                            `<button class="lecturer-card-action-btn btn-suspend" onclick="updateLecturerStatus(${lecturer.id}, 'suspend')" title="Suspend">
+                                                <i class="fas fa-ban"></i>
+                                            </button>` :
+                                            `<button class="lecturer-card-action-btn btn-suspend" onclick="updateLecturerStatus(${lecturer.id}, 'activate')" title="Activate">
+                                                <i class="fas fa-check-circle"></i>
+                                            </button>`
+                                        }
+                                        <button class="lecturer-card-action-btn btn-delete" onclick="deleteLecturer(${lecturer.id})" title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
         `;
-        }).join('');
     }
 
     function renderLecturersPagination() {
@@ -1781,6 +1804,411 @@
 
         container.innerHTML = html;
     }
+
+    // ==================== LECTURER UNITS MODAL ====================
+    
+    let currentLecturerId = null;
+    let currentLecturerData = null;
+    let selectedUnitsForAssignment = new Set();
+    let assignUnitsCurrentPage = 1;
+    let assignUnitsTotalPages = 1;
+    let assignedUnitIds = new Set();
+
+    /**
+     * Handle lecturer card click
+     */
+    function handleLecturerCardClick(event, lecturerId) {
+        // Don't open modal if clicking on action buttons
+        if (event.target.closest('.lecturer-card-actions')) {
+            return;
+        }
+        openLecturerUnitsModal(lecturerId);
+    }
+
+    /**
+     * Open lecturer units modal
+     */
+    async function openLecturerUnitsModal(lecturerId) {
+        currentLecturerId = lecturerId;
+        const modal = document.getElementById('lecturer-units-modal');
+        if (!modal) return;
+
+        // Get lecturer data
+        try {
+            const lecturerData = await apiCall(`lecturers/${lecturerId}/`);
+            if (lecturerData) {
+                currentLecturerData = lecturerData;
+                document.getElementById('lecturer-units-modal-title').textContent = `${lecturerData.full_name}'s Units`;
+                document.getElementById('lecturer-units-name').textContent = lecturerData.full_name;
+                document.getElementById('lecturer-units-details').innerHTML = `
+                    <div>${lecturerData.email || ''}</div>
+                    <div style="font-size: 12px; color: var(--text-muted);">Staff: ${lecturerData.username || '-'}</div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading lecturer data:', error);
+        }
+
+        // Load units
+        await loadLecturerUnits(lecturerId);
+        
+        modal.classList.add('active');
+    }
+
+    /**
+     * Close lecturer units modal
+     */
+    function closeLecturerUnitsModal() {
+        const modal = document.getElementById('lecturer-units-modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+        currentLecturerId = null;
+        currentLecturerData = null;
+    }
+
+    /**
+     * Load units for a lecturer
+     */
+    async function loadLecturerUnits(lecturerId) {
+        const container = document.getElementById('lecturer-units-container');
+        if (!container) return;
+
+        container.innerHTML = '<div class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading units...</div>';
+
+        try {
+            const data = await apiCall(`lecturers/${lecturerId}/units/`);
+            if (data && data.results) {
+                renderLecturerUnits(data.results);
+            } else {
+                container.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 40px 20px;">
+                        <i class="fas fa-book" style="font-size: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+                        <p style="color: var(--text-secondary);">No units assigned to this lecturer</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading lecturer units:', error);
+            container.innerHTML = `
+                <div class="error-row">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Error loading units. Please try again.</p>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Render lecturer units as cards
+     */
+    function renderLecturerUnits(units) {
+        const container = document.getElementById('lecturer-units-container');
+        if (!container) return;
+
+        if (units.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state" style="text-align: center; padding: 40px 20px;">
+                    <i class="fas fa-book" style="font-size: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+                    <p style="color: var(--text-secondary);">No units assigned to this lecturer</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="units-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
+                ${units.map(unit => `
+                    <div class="unit-card" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; background: var(--bg-card);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: var(--text-color); font-size: 16px; margin-bottom: 4px;">${(unit.code || '').toUpperCase()}</div>
+                                <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 8px;">${unit.name}</div>
+                                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
+                                    <i class="fas fa-calendar-alt" style="margin-right: 4px;"></i>
+                                    Semester ${unit.semester}
+                                </div>
+                                ${unit.course_assignments && unit.course_assignments.length > 0 ? `
+                                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                                        <i class="fas fa-book" style="margin-right: 4px;"></i>
+                                        ${unit.course_assignments.length} course${unit.course_assignments.length !== 1 ? 's' : ''}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    /**
+     * Open assign units modal
+     */
+    async function openAssignUnitsModal() {
+        if (!currentLecturerId) return;
+
+        const modal = document.getElementById('assign-units-modal');
+        if (!modal) return;
+
+        selectedUnitsForAssignment.clear();
+        assignUnitsCurrentPage = 1;
+        
+        // Get currently assigned unit IDs
+        try {
+            const assignedData = await apiCall(`lecturers/${currentLecturerId}/units/`);
+            if (assignedData && assignedData.results) {
+                assignedUnitIds = new Set(assignedData.results.map(u => u.id));
+            }
+        } catch (error) {
+            console.error('Error loading assigned units:', error);
+            assignedUnitIds = new Set();
+        }
+
+        await loadAvailableUnits(1);
+        modal.classList.add('active');
+        updateAssignButtonState();
+    }
+
+    /**
+     * Close assign units modal
+     */
+    function closeAssignUnitsModal() {
+        const modal = document.getElementById('assign-units-modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+        selectedUnitsForAssignment.clear();
+        assignUnitsCurrentPage = 1;
+        updateAssignButtonState();
+        updateSelectedCount();
+    }
+
+    /**
+     * Load available units for assignment
+     */
+    async function loadAvailableUnits(page = 1) {
+        const container = document.getElementById('assign-units-container');
+        const pagination = document.getElementById('assign-units-pagination');
+        if (!container) return;
+
+        assignUnitsCurrentPage = page;
+        container.innerHTML = '<div class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading available units...</div>';
+
+        try {
+            const params = new URLSearchParams({
+                page: page,
+                page_size: 12
+            });
+            const data = await apiCall(`units/?${params.toString()}`);
+            
+            if (data && data.results) {
+                assignUnitsTotalPages = data.total_pages || 1;
+                renderAvailableUnits(data.results);
+                renderAssignUnitsPagination();
+            } else {
+                container.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 40px 20px;">
+                        <i class="fas fa-book" style="font-size: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+                        <p style="color: var(--text-secondary);">No units available</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading available units:', error);
+            container.innerHTML = `
+                <div class="error-row">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Error loading units. Please try again.</p>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Render available units with checkboxes
+     */
+    function renderAvailableUnits(units) {
+        const container = document.getElementById('assign-units-container');
+        if (!container) return;
+
+        if (units.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state" style="text-align: center; padding: 40px 20px;">
+                    <i class="fas fa-book" style="font-size: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+                    <p style="color: var(--text-secondary);">No units available</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="units-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
+                ${units.map(unit => {
+                    const isAssigned = assignedUnitIds.has(unit.id);
+                    const isSelected = selectedUnitsForAssignment.has(unit.id);
+                    const cardClass = isAssigned ? 'unit-card-selectable assigned' : (isSelected ? 'unit-card-selectable selected' : 'unit-card-selectable');
+                    
+                    return `
+                        <div class="${cardClass}" data-unit-id="${unit.id}" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; background: var(--bg-card); position: relative; ${isAssigned ? 'opacity: 0.6;' : 'cursor: pointer;'}">
+                            ${!isAssigned ? `<input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleUnitSelection(${unit.id})" style="position: absolute; top: 12px; right: 12px; width: 20px; height: 20px; cursor: pointer; z-index: 10;">` : ''}
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; color: var(--text-color); font-size: 16px; margin-bottom: 4px;">${(unit.code || '').toUpperCase()}</div>
+                                    <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 8px;">${unit.name}</div>
+                                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
+                                        <i class="fas fa-calendar-alt" style="margin-right: 4px;"></i>
+                                        Semester ${unit.semester}
+                                    </div>
+                                    ${unit.lecturer_name && !isAssigned ? `
+                                        <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                                            <i class="fas fa-chalkboard-teacher" style="margin-right: 4px;"></i>
+                                            ${unit.lecturer_name}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    /**
+     * Toggle unit selection
+     */
+    function toggleUnitSelection(unitId) {
+        if (assignedUnitIds.has(unitId)) return; // Can't select already assigned units
+        
+        if (selectedUnitsForAssignment.has(unitId)) {
+            selectedUnitsForAssignment.delete(unitId);
+        } else {
+            selectedUnitsForAssignment.add(unitId);
+        }
+        updateAssignButtonState();
+        updateSelectedCount();
+        
+        // Update visual state without re-rendering entire list
+        const container = document.getElementById('assign-units-container');
+        if (container) {
+            const unitCard = container.querySelector(`[data-unit-id="${unitId}"]`);
+            if (unitCard) {
+                if (selectedUnitsForAssignment.has(unitId)) {
+                    unitCard.classList.add('selected');
+                    const checkbox = unitCard.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.checked = true;
+                } else {
+                    unitCard.classList.remove('selected');
+                    const checkbox = unitCard.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.checked = false;
+                }
+            }
+        }
+    }
+
+    /**
+     * Update assign button state
+     */
+    function updateAssignButtonState() {
+        const btn = document.getElementById('assign-units-submit-btn');
+        if (btn) {
+            btn.disabled = selectedUnitsForAssignment.size === 0;
+        }
+    }
+
+    /**
+     * Update selected count
+     */
+    function updateSelectedCount() {
+        const countEl = document.getElementById('assign-units-selected-count');
+        if (countEl) {
+            const count = selectedUnitsForAssignment.size;
+            countEl.textContent = `${count} unit${count !== 1 ? 's' : ''} selected`;
+        }
+    }
+
+    /**
+     * Render pagination for assign units modal
+     */
+    function renderAssignUnitsPagination() {
+        const container = document.getElementById('assign-units-pagination');
+        if (!container) return;
+
+        if (assignUnitsTotalPages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+        if (assignUnitsCurrentPage > 1) {
+            html += `<button class="btn-pagination" onclick="loadAvailableUnits(${assignUnitsCurrentPage - 1})">
+                <i class="fas fa-chevron-left"></i> Previous
+            </button>`;
+        }
+
+        html += `<span class="page-info">Page ${assignUnitsCurrentPage} of ${assignUnitsTotalPages}</span>`;
+
+        if (assignUnitsCurrentPage < assignUnitsTotalPages) {
+            html += `<button class="btn-pagination" onclick="loadAvailableUnits(${assignUnitsCurrentPage + 1})">
+                Next <i class="fas fa-chevron-right"></i>
+            </button>`;
+        }
+
+        container.innerHTML = html;
+    }
+
+    /**
+     * Assign selected units to lecturer
+     */
+    async function assignSelectedUnits() {
+        if (!currentLecturerId || selectedUnitsForAssignment.size === 0) return;
+
+        const btn = document.getElementById('assign-units-submit-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Assigning...';
+        }
+
+        try {
+            const unitIds = Array.from(selectedUnitsForAssignment);
+            const response = await apiCall(`lecturers/${currentLecturerId}/assign-units/`, {
+                method: 'POST',
+                body: JSON.stringify({ unit_ids: unitIds })
+            });
+
+            if (response && response.success) {
+                showToast('success', `Successfully assigned ${response.assigned_count} unit${response.assigned_count !== 1 ? 's' : ''} to lecturer`);
+                
+                // Close assign modal
+                closeAssignUnitsModal();
+                
+                // Refresh lecturer units
+                await loadLecturerUnits(currentLecturerId);
+                
+                // Refresh lecturers list to update counts
+                await fetchLecturers(state.lecturers.currentPage);
+            }
+        } catch (error) {
+            console.error('Error assigning units:', error);
+            // Error already shown by apiCall
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check"></i> Assign';
+            }
+        }
+    }
+
+    // Expose functions to global scope
+    window.handleLecturerCardClick = handleLecturerCardClick;
+    window.openLecturerUnitsModal = openLecturerUnitsModal;
+    window.closeLecturerUnitsModal = closeLecturerUnitsModal;
+    window.openAssignUnitsModal = openAssignUnitsModal;
+    window.closeAssignUnitsModal = closeAssignUnitsModal;
+    window.loadAvailableUnits = loadAvailableUnits;
+    window.toggleUnitSelection = toggleUnitSelection;
+    window.assignSelectedUnits = assignSelectedUnits;
 
     // ==================== ENROLLMENTS ====================
 
@@ -2203,6 +2631,9 @@
      * Load dashboard statistics
      */
     async function loadDashboardStats() {
+        // Initialize date immediately
+        initializeDashboardDate();
+        
         // Return cached data if available
         if (dashboardStatsCache) {
             updateDashboardUI(dashboardStatsCache);
@@ -2220,10 +2651,19 @@
         } catch (error) {
             console.error('Error loading dashboard stats:', error);
             // Show error state
-            document.getElementById('dashboard-total-students').textContent = 'Error';
-            document.getElementById('dashboard-total-departments').textContent = 'Error';
-            document.getElementById('dashboard-total-courses').textContent = 'Error';
-            document.getElementById('dashboard-total-lecturers').textContent = 'Error';
+            const studentsEl = document.getElementById('dashboard-total-students');
+            const deptEl = document.getElementById('dashboard-total-departments');
+            const coursesEl = document.getElementById('dashboard-total-courses');
+            const lecturersEl = document.getElementById('dashboard-total-lecturers');
+            
+            if (studentsEl) studentsEl.textContent = 'Error';
+            if (deptEl) deptEl.textContent = 'Error';
+            if (coursesEl) coursesEl.textContent = 'Error';
+            if (lecturersEl) lecturersEl.textContent = 'Error';
+            
+            // Still initialize date and set mock values for year/semester
+            initializeDashboardDate();
+            updateAcademicInfo({ current_academic_year: '2024/2025', current_semester: 1 });
         }
     }
 
@@ -2236,9 +2676,20 @@
         document.getElementById('dashboard-students-status').textContent = 'Active';
         document.getElementById('dashboard-students-status').className = 'card-change positive';
 
-        document.getElementById('dashboard-total-departments').textContent = data.total_departments || 0;
-        document.getElementById('dashboard-departments-status').textContent = 'Active';
-        document.getElementById('dashboard-departments-status').className = 'card-change positive';
+        // Update units widget (replaces departments)
+        document.getElementById('dashboard-total-units').textContent = data.total_units || 0;
+        const unitsStatusEl = document.getElementById('dashboard-units-status');
+        if (unitsStatusEl) {
+            const withoutLecturer = data.units_without_lecturer || 0;
+            const withoutCourse = data.units_without_course || 0;
+            unitsStatusEl.innerHTML = `
+                <div style="font-size: 11px; line-height: 1.4;">
+                    <div>Without Lecturer: <strong>${withoutLecturer}</strong></div>
+                    <div>Without Course: <strong>${withoutCourse}</strong></div>
+                </div>
+            `;
+            unitsStatusEl.className = 'card-change neutral';
+        }
 
         document.getElementById('dashboard-total-courses').textContent = data.total_courses || 0;
         document.getElementById('dashboard-courses-status').textContent = 'Active';
@@ -2248,19 +2699,21 @@
         document.getElementById('dashboard-lecturers-status').textContent = 'Active';
         document.getElementById('dashboard-lecturers-status').className = 'card-change positive';
 
-        // Update recent students table
-        const tbody = document.getElementById('dashboard-recent-students');
-        if (tbody) {
+        // Update recent students table (compact widget)
+        const recentStudentsTbody = document.getElementById('dashboard-recent-students');
+        if (recentStudentsTbody) {
             if (data.recent_students && data.recent_students.length > 0) {
-                tbody.innerHTML = data.recent_students.map(student => `
-                    <tr>
+                // Limit to 5 students for compact display
+                const studentsToShow = data.recent_students.slice(0, 5);
+                recentStudentsTbody.innerHTML = studentsToShow.map(student => `
+                    <tr class="recent-student-row" data-student-id="${student.id}" onclick="handleRecentStudentClick(${student.id}, event)">
                         <td>${student.admission_number || '-'}</td>
                         <td>${student.full_name || '-'}</td>
                         <td>${student.created_at || '-'}</td>
                     </tr>
                 `).join('');
             } else {
-                tbody.innerHTML = `
+                recentStudentsTbody.innerHTML = `
                     <tr>
                         <td colspan="3" class="empty-state">
                             <i class="fas fa-user-graduate"></i>
@@ -2269,6 +2722,50 @@
                     </tr>
                 `;
             }
+        }
+        
+        // Update academic info
+        updateAcademicInfo(data);
+    }
+    
+    /**
+     * Update academic info widget (date, year, semester)
+     */
+    function updateAcademicInfo(data) {
+        // Update current date (always set from current date)
+        const currentDateEl = document.getElementById('dashboard-current-date');
+        if (currentDateEl) {
+            const now = new Date();
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            currentDateEl.textContent = now.toLocaleDateString('en-US', options);
+        }
+        
+        // Update academic year
+        const academicYearEl = document.getElementById('dashboard-academic-year');
+        if (academicYearEl) {
+            // Try to get from API data, fallback to mock value
+            const academicYear = (data && data.current_academic_year) || '2024/2025';
+            academicYearEl.textContent = academicYear || '2024/2025';
+        }
+        
+        // Update current semester
+        const currentSemesterEl = document.getElementById('dashboard-current-semester');
+        if (currentSemesterEl) {
+            // Try to get from API data, fallback to mock value
+            const semester = (data && data.current_semester) || 1;
+            currentSemesterEl.textContent = `Semester ${semester}`;
+        }
+    }
+    
+    /**
+     * Initialize dashboard date on page load
+     */
+    function initializeDashboardDate() {
+        const currentDateEl = document.getElementById('dashboard-current-date');
+        if (currentDateEl && currentDateEl.textContent.includes('spinner')) {
+            const now = new Date();
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            currentDateEl.textContent = now.toLocaleDateString('en-US', options);
         }
     }
 
@@ -2328,7 +2825,27 @@
             return;
         }
         
-        const student = state.students.data.find(s => s.id === id);
+        let student = state.students.data.find(s => s.id === id);
+        
+        // If student not in state, fetch from API
+        if (!student) {
+            try {
+                const response = await fetch(`/api/${window.COLLEGE_SLUG}/students/${id}/`);
+                if (response.ok) {
+                    student = await response.json();
+                    // Add to state for future use
+                    state.students.data.push(student);
+                } else {
+                    showToast('error', 'Student not found');
+                    return;
+                }
+            } catch (error) {
+                console.error('Error fetching student:', error);
+                showToast('error', 'Failed to load student details');
+                return;
+            }
+        }
+        
         if (student) {
             // Set view mode flag
             document.getElementById('student-form').dataset.viewMode = 'true';
@@ -2350,21 +2867,40 @@
             document.getElementById('student-current-semester').value = student.current_semester || '';
             document.getElementById('student-course').value = student.course_id || '';
             
-            // Make all fields read-only
-            document.getElementById('student-admission-number').disabled = true;
-            document.getElementById('student-full-name').disabled = true;
-            document.getElementById('student-email').disabled = true;
-            document.getElementById('student-phone').disabled = true;
-            document.getElementById('student-gender').disabled = true;
-            document.getElementById('student-year').disabled = true;
-            document.getElementById('student-date-of-birth').disabled = true;
-            document.getElementById('student-current-semester').disabled = true;
-            document.getElementById('student-course').disabled = true;
+            // Check if user has edit access (Principal, Reception, Registrar)
+            const canEdit = window.USER_CAN_EDIT_STUDENT || false;
+            
+            // Make all fields read-only or editable based on role
+            const fields = [
+                'student-admission-number',
+                'student-full-name',
+                'student-email',
+                'student-phone',
+                'student-gender',
+                'student-year',
+                'student-date-of-birth',
+                'student-current-semester',
+                'student-course'
+            ];
+            
+            fields.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (field) {
+                    field.disabled = !canEdit;
+                }
+            });
             
             // Update modal title
-            document.getElementById('student-modal-title').textContent = 'Student Details';
+            document.getElementById('student-modal-title').textContent = canEdit ? 'Edit Student' : 'Student Details';
             
-            // Hide submit button, show only close button
+            // Show/hide submit button based on edit access
+            const submitBtn = document.getElementById('student-form').querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.style.display = canEdit ? 'inline-flex' : 'none';
+            }
+            
+            // Update view mode flag
+            document.getElementById('student-form').dataset.viewMode = canEdit ? 'false' : 'true';
             const submitButton = document.querySelector('#student-form button[type="submit"]');
             if (submitButton) {
                 submitButton.style.display = 'none';
@@ -3550,6 +4086,8 @@
         fetchResults,
         loadDashboardStats,
         refreshDashboardStats,
+        initializeDashboardDate,
+        updateAcademicInfo,
         createStudent,
         updateStudent,
         deleteStudent,

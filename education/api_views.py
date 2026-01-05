@@ -1508,6 +1508,8 @@ def api_student_detail(request, college_slug, pk):
             'phone': student.phone or '',
             'gender': student.gender,
             'year': student.year_of_study,
+            'date_of_birth': student.date_of_birth.strftime('%Y-%m-%d') if student.date_of_birth else '',
+            'current_semester': student.current_semester or '',
             'department_id': 1,
             'course_id': student.course.id if student.course else None,
             'status': student.status,
@@ -1905,6 +1907,154 @@ def api_lecturer_detail(request, college_slug, pk):
             return JsonResponse({'error': 'Cannot delete director'}, status=403)
         lecturer.delete()
         return JsonResponse({'success': True}, status=204)
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["GET"])
+def api_lecturer_units_by_id(request, college_slug, lecturer_id):
+    """API endpoint to get units assigned to a specific lecturer by ID - ENFORCES COLLEGE ISOLATION"""
+    college = get_college_from_slug(college_slug)
+    if not college:
+        return JsonResponse({'error': 'College not found'}, status=404)
+    
+    verify_user_college_access(request, college)
+    
+    # Only college admins can view units for any lecturer
+    if not request.user.is_college_admin():
+        return JsonResponse({'error': 'Access denied. Only college administrators can view lecturer units.'}, status=403)
+    
+    try:
+        lecturer = CustomUser.objects.get(pk=lecturer_id, college=college)
+    except CustomUser.DoesNotExist:
+        return JsonResponse({'error': 'Lecturer not found'}, status=404)
+    
+    # Get units assigned to this lecturer
+    units = CollegeUnit.objects.filter(
+        college=college,
+        assigned_lecturer=lecturer
+    ).select_related('assigned_lecturer', 'global_unit').order_by('code')
+    
+    units_list = []
+    for unit in units:
+        # Get all course assignments for this unit
+        course_assignments = CollegeCourseUnit.objects.filter(
+            unit=unit,
+            college=college
+        ).select_related('course').values('course_id', 'course__name', 'year_of_study', 'semester')
+        
+        courses_info = []
+        for assignment in course_assignments:
+            courses_info.append({
+                'course_id': assignment['course_id'],
+                'course_name': assignment['course__name'],
+                'year': assignment['year_of_study'],
+                'semester': assignment['semester']
+            })
+        
+        units_list.append({
+            'id': unit.id,
+            'code': unit.code,
+            'name': unit.name,
+            'semester': unit.semester,
+            'lecturer_id': unit.assigned_lecturer.id if unit.assigned_lecturer else None,
+            'lecturer_name': f"{unit.assigned_lecturer.first_name} {unit.assigned_lecturer.last_name}".strip() if unit.assigned_lecturer else None,
+            'global_unit_id': unit.global_unit.id if unit.global_unit else None,
+            'global_unit_code': unit.global_unit.code if unit.global_unit else None,
+            'global_unit_name': unit.global_unit.name if unit.global_unit else None,
+            'course_assignments': courses_info,
+            'status': 'active'
+        })
+    
+    return JsonResponse({
+        'count': len(units_list),
+        'results': units_list
+    })
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_lecturer_assign_units(request, college_slug, lecturer_id):
+    """API endpoint to bulk assign units to a lecturer - ENFORCES COLLEGE ISOLATION"""
+    college = get_college_from_slug(college_slug)
+    if not college:
+        return JsonResponse({'error': 'College not found'}, status=404)
+    
+    verify_user_college_access(request, college)
+    
+    # Only college admins can assign units
+    if not request.user.is_college_admin():
+        return JsonResponse({'error': 'Access denied. Only college administrators can assign units.'}, status=403)
+    
+    try:
+        lecturer = CustomUser.objects.get(pk=lecturer_id, college=college)
+    except CustomUser.DoesNotExist:
+        return JsonResponse({'error': 'Lecturer not found'}, status=404)
+    
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    
+    unit_ids = data.get('unit_ids', [])
+    if not unit_ids or not isinstance(unit_ids, list):
+        return JsonResponse({'error': 'unit_ids must be a non-empty list'}, status=400)
+    
+    # Get units that belong to this college and are not already assigned to another lecturer
+    units = CollegeUnit.objects.filter(
+        id__in=unit_ids,
+        college=college
+    )
+    
+    if units.count() != len(unit_ids):
+        return JsonResponse({'error': 'Some units were not found or do not belong to this college'}, status=400)
+    
+    # Assign units to lecturer
+    updated_count = units.update(assigned_lecturer=lecturer)
+    
+    # Return updated units list
+    updated_units = CollegeUnit.objects.filter(
+        college=college,
+        assigned_lecturer=lecturer
+    ).select_related('assigned_lecturer', 'global_unit').order_by('code')
+    
+    units_list = []
+    for unit in updated_units:
+        course_assignments = CollegeCourseUnit.objects.filter(
+            unit=unit,
+            college=college
+        ).select_related('course').values('course_id', 'course__name', 'year_of_study', 'semester')
+        
+        courses_info = []
+        for assignment in course_assignments:
+            courses_info.append({
+                'course_id': assignment['course_id'],
+                'course_name': assignment['course__name'],
+                'year': assignment['year_of_study'],
+                'semester': assignment['semester']
+            })
+        
+        units_list.append({
+            'id': unit.id,
+            'code': unit.code,
+            'name': unit.name,
+            'semester': unit.semester,
+            'lecturer_id': unit.assigned_lecturer.id if unit.assigned_lecturer else None,
+            'lecturer_name': f"{unit.assigned_lecturer.first_name} {unit.assigned_lecturer.last_name}".strip() if unit.assigned_lecturer else None,
+            'global_unit_id': unit.global_unit.id if unit.global_unit else None,
+            'global_unit_code': unit.global_unit.code if unit.global_unit else None,
+            'global_unit_name': unit.global_unit.name if unit.global_unit else None,
+            'course_assignments': courses_info,
+            'status': 'active'
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'assigned_count': updated_count,
+        'count': len(units_list),
+        'results': units_list
+    }, status=200)
 
 
 @login_required
@@ -3903,6 +4053,15 @@ def api_dashboard_overview(request, college_slug):
         total_lecturers = CustomUser.objects.filter(college=college, role='lecturer').count()
         total_units = CollegeUnit.objects.filter(college=college).count()
         
+        # Calculate units statistics
+        units_without_lecturer = CollegeUnit.objects.filter(college=college, assigned_lecturer__isnull=True).count()
+        
+        # Count units without course (units not assigned to any course)
+        from education.models import CollegeCourseUnit
+        units_in_courses = CollegeCourseUnit.objects.filter(unit__college=college).values_list('unit_id', flat=True).distinct()
+        all_unit_ids = CollegeUnit.objects.filter(college=college).values_list('id', flat=True)
+        units_without_course = len(set(all_unit_ids) - set(units_in_courses))
+        
         # Count unique departments (using first word of course names as department)
         # Optimize: Use values_list to get only names, reducing memory usage
         course_names = CollegeCourse.objects.filter(college=college).values_list('name', flat=True)
@@ -3943,8 +4102,12 @@ def api_dashboard_overview(request, college_slug):
             'total_courses': total_courses,
             'total_lecturers': total_lecturers,
             'total_units': total_units,
+            'units_without_lecturer': units_without_lecturer,
+            'units_without_course': units_without_course,
             'recent_students': recent_students_list,
-            'recent_activities': recent_activities
+            'recent_activities': recent_activities,
+            'current_academic_year': college.current_academic_year or '',
+            'current_semester': college.current_semester or 1
         })
 
 

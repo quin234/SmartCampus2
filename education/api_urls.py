@@ -35,6 +35,8 @@ urlpatterns = [
     path('lecturers/<int:pk>/', api_views.api_lecturer_detail, name='api_lecturer_detail'),
     path('lecturers/<int:pk>/role/', api_views.api_lecturer_role_update, name='api_lecturer_role_update'),
     path('lecturers/<int:pk>/status/', api_views.api_lecturer_status_update, name='api_lecturer_status_update'),
+    path('lecturers/<int:lecturer_id>/units/', api_views.api_lecturer_units_by_id, name='api_lecturer_units_by_id'),
+    path('lecturers/<int:lecturer_id>/assign-units/', api_views.api_lecturer_assign_units, name='api_lecturer_assign_units'),
     path('lecturer/announcements/', api_views.api_lecturer_announcements, name='api_lecturer_announcements'),
     path('lecturer/announcements/new-count/', api_views.api_lecturer_new_announcements_count, name='api_lecturer_new_announcements_count'),
     

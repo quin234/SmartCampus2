@@ -90,8 +90,8 @@
         <div class="card-header">
             <h3 class="card-title"><i class="fas fa-chart-bar"></i> Semester Comparison ({{ current_academic_year }})</h3>
         </div>
-        <div class="card-body">
-            <canvas id="semesterChart" height="80"></canvas>
+        <div class="card-body" style="padding: 16px;">
+            <canvas id="semesterChart" height="60"></canvas>
             {% if growth_percentage != 0 %}
             <div class="growth-indicator">
                 <i class="fas fa-arrow-{% if growth_percentage > 0 %}up{% else %}down{% endif %}"></i>
@@ -110,8 +110,8 @@
         <div class="card-header">
             <h3 class="card-title"><i class="fas fa-chart-line"></i> Payment Trends (Last 6 Months)</h3>
         </div>
-        <div class="card-body">
-            <canvas id="monthlyTrendChart" height="80"></canvas>
+        <div class="card-body" style="padding: 16px;">
+            <canvas id="monthlyTrendChart" height="60"></canvas>
         </div>
     </div>
 
@@ -336,7 +336,145 @@
 
     /* Chart Container */
     .card-body canvas {
-        max-height: 300px;
+        max-height: 200px !important;
+        width: 100% !important;
+        height: auto !important;
+    }
+    
+    /* Chart wrapper to maintain aspect ratio */
+    .card-body {
+        position: relative;
+    }
+    
+    .card-body canvas {
+        display: block;
+    }
+    
+    /* Compact Dashboard Grid */
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 16px;
+    }
+    
+    /* Compact Stats Grid */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    
+    /* Compact Stat Cards */
+    .stat-card {
+        padding: 16px;
+        gap: 12px;
+    }
+    
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        font-size: 20px;
+    }
+    
+    .stat-value {
+        font-size: 22px;
+    }
+    
+    .stat-label {
+        font-size: 12px;
+    }
+    
+    /* Compact Content Cards */
+    .content-card {
+        margin-bottom: 16px;
+    }
+    
+    .card-header {
+        padding: 12px 16px;
+    }
+    
+    .card-title {
+        font-size: 15px;
+    }
+    
+    /* Compact Progress Card */
+    .progress-card {
+        margin-bottom: 16px;
+    }
+    
+    .progress-card .card-body {
+        padding: 16px;
+    }
+    
+    .progress-section {
+        gap: 16px;
+    }
+    
+    .progress-bar-container {
+        height: 28px;
+    }
+    
+    .progress-label {
+        font-size: 13px;
+    }
+    
+    .progress-percentage {
+        font-size: 14px;
+    }
+    
+    .progress-text {
+        font-size: 11px;
+    }
+    
+    /* Compact Projection Grid */
+    .projection-grid {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+    }
+    
+    .projection-item {
+        padding: 16px;
+    }
+    
+    .projection-value {
+        font-size: 22px;
+    }
+    
+    .projection-label {
+        font-size: 11px;
+        margin-bottom: 8px;
+    }
+    
+    .projection-note {
+        font-size: 11px;
+    }
+    
+    /* Compact Growth Indicator */
+    .growth-indicator {
+        margin-top: 12px;
+        padding: 10px;
+    }
+    
+    .growth-indicator i {
+        font-size: 16px;
+    }
+    
+    /* Responsive adjustments */
+    @media (min-width: 1200px) {
+        .dashboard-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    
+    @media (min-width: 768px) and (max-width: 1199px) {
+        .dashboard-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
     }
 
     @media (max-width: 768px) {
@@ -351,6 +489,35 @@
         .projection-grid {
             grid-template-columns: 1fr;
         }
+        
+        .card-body canvas {
+            max-height: 160px !important;
+        }
+    }
+    
+    @media (min-width: 992px) {
+        .dashboard-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .stats-grid {
+            grid-template-columns: repeat(4, 1fr);
+        }
+    }
+    
+    /* Compact table for Recent Payments */
+    .table-container {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    
+    .data-table {
+        font-size: 13px;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: 10px 12px;
     }
 </style>
 {% endblock %}
@@ -381,6 +548,7 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
+                aspectRatio: 2.5,
                 plugins: {
                     legend: {
                         display: false
@@ -399,6 +567,16 @@
                         ticks: {
                             callback: function(value) {
                                 return 'KES ' + value.toLocaleString('en-KE');
+                            },
+                            font: {
+                                size: 11
+                            }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            font: {
+                                size: 11
                             }
                         }
                     }
@@ -436,6 +614,7 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
+                aspectRatio: 2.5,
                 plugins: {
                     tooltip: {
                         callbacks: {
@@ -451,6 +630,16 @@
                         ticks: {
                             callback: function(value) {
                                 return 'KES ' + value.toLocaleString('en-KE');
+                            },
+                            font: {
+                                size: 11
+                            }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            font: {
+                                size: 11
                             }
                         }
                     }
