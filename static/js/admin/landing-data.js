@@ -115,6 +115,10 @@
                 ...(options.headers || {})
             }
         };
+        
+        // Check if this is a dashboard call (suppress toast for dashboard)
+        const isDashboardCall = endpoint.includes('dashboard');
+        const suppressToast = options.suppressToast !== undefined ? options.suppressToast : isDashboardCall;
 
         try {
             const response = await fetch(buildApiEndpoint(endpoint), config);
@@ -126,8 +130,12 @@
             
             // Handle 401/403 before trying to parse JSON
             if (response.status === 401 || response.status === 403) {
-                window.location.href = '/admin/login/';
-                return null;
+                // Don't redirect on dashboard calls - let the error handler deal with it
+                if (!isDashboardCall) {
+                    window.location.href = '/admin/login/';
+                }
+                const errorText = response.status === 401 ? 'Authentication required' : 'Access forbidden';
+                throw new Error(`${errorText} (HTTP ${response.status})`);
             }
             
             const contentType = response.headers.get('content-type');
@@ -162,13 +170,24 @@
             }
             
             if (!response.ok) {
-                throw new Error(data.error || data.message || 'API request failed');
+                const errorMsg = data.error || data.message || `API request failed (HTTP ${response.status})`;
+                throw new Error(errorMsg);
             }
             
             return data;
         } catch (error) {
-            console.error('API Error:', error);
-            showToast('error', error.message || 'An error occurred');
+            console.error('API Error:', {
+                endpoint,
+                error: error.message,
+                name: error.name,
+                aborted: error.name === 'AbortError'
+            });
+            
+            // Only show toast if not suppressed (dashboard calls handle errors differently)
+            if (!suppressToast) {
+                showToast('error', error.message || 'An error occurred');
+            }
+            
             throw error;
         }
     }
@@ -2630,47 +2649,121 @@
     /**
      * Load dashboard statistics
      */
-    async function loadDashboardStats() {
-        // Initialize date immediately
-        initializeDashboardDate();
-        
-        // Set loading states for all elements
-        setDashboardLoadingStates();
-        
-        // Return cached data if available
-        if (dashboardStatsCache) {
-            updateDashboardUI(dashboardStatsCache);
-            return dashboardStatsCache;
-        }
+    // Track if dashboard is currently loading to prevent race conditions
+    let dashboardLoading = false;
+    let dashboardLastSuccess = null;
 
+    async function loadDashboardStats() {
+        // Prevent multiple simultaneous calls
+        if (dashboardLoading) {
+            console.log('Dashboard stats already loading, skipping duplicate call');
+            return dashboardStatsCache || dashboardLastSuccess;
+        }
+        
+        dashboardLoading = true;
+        
         try {
-            const data = await apiCall('dashboard/overview/');
+            // Initialize date immediately
+            initializeDashboardDate();
             
-            if (data && typeof data === 'object') {
-                dashboardStatsCache = data;
-                updateDashboardUI(data);
-                return data;
-            } else {
-                throw new Error('Invalid data received from API');
+            // Set loading states for all elements only if we don't have cached data
+            if (!dashboardStatsCache && !dashboardLastSuccess) {
+                setDashboardLoadingStates();
+            }
+            
+            // Return cached data if available
+            if (dashboardStatsCache) {
+                updateDashboardUI(dashboardStatsCache);
+                dashboardLastSuccess = dashboardStatsCache;
+                return dashboardStatsCache;
+            }
+
+            // Make API call with timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            
+            try {
+                const data = await apiCall('dashboard/overview/', {
+                    signal: controller.signal,
+                    suppressToast: true // Suppress toast for dashboard - we handle errors specifically
+                });
+                
+                clearTimeout(timeoutId);
+                
+                // Validate response data structure
+                if (data && typeof data === 'object' && !data.error) {
+                    // Check if we have the expected fields
+                    const hasValidData = 'total_students' in data || 
+                                       'total_units' in data || 
+                                       'total_courses' in data ||
+                                       'total_lecturers' in data;
+                    
+                    if (hasValidData) {
+                        dashboardStatsCache = data;
+                        dashboardLastSuccess = data;
+                        updateDashboardUI(data);
+                        console.log('Dashboard stats loaded successfully:', {
+                            students: data.total_students,
+                            units: data.total_units,
+                            courses: data.total_courses,
+                            lecturers: data.total_lecturers
+                        });
+                        return data;
+                    } else {
+                        throw new Error('API response missing required fields');
+                    }
+                } else if (data && data.error) {
+                    throw new Error(data.error || 'API returned an error');
+                } else {
+                    throw new Error('Invalid data received from API');
+                }
+            } catch (fetchError) {
+                clearTimeout(timeoutId);
+                
+                // Only show error if we don't have previous successful data
+                if (!dashboardLastSuccess) {
+                    throw fetchError;
+                } else {
+                    // If we have previous data, log the error but don't overwrite
+                    console.warn('Dashboard stats fetch failed, but using cached data:', fetchError);
+                    return dashboardLastSuccess;
+                }
             }
         } catch (error) {
             console.error('Error loading dashboard stats:', error);
-            // Show user-friendly error messages
-            setDashboardErrorStates(error);
+            
+            // Only show error states if we don't have any previous successful data
+            if (!dashboardLastSuccess) {
+                setDashboardErrorStates(error);
+            } else {
+                // Log error but keep showing previous data
+                console.warn('Dashboard stats error, but keeping previous data:', error);
+            }
             
             // Still initialize date and set mock values for year/semester
             initializeDashboardDate();
             updateAcademicInfo({ current_academic_year: '2024/2025', current_semester: 1 });
             
-            // Re-throw error for caller to handle if needed
+            // Return last success if available, otherwise throw
+            if (dashboardLastSuccess) {
+                return dashboardLastSuccess;
+            }
             throw error;
+        } finally {
+            dashboardLoading = false;
         }
     }
     
     /**
      * Set loading states for dashboard elements
+     * Only sets loading if element doesn't already have valid data
      */
     function setDashboardLoadingStates() {
+        // Don't set loading if we have cached successful data
+        if (dashboardStatsCache || dashboardLastSuccess) {
+            return;
+        }
+        
         const elements = [
             { id: 'dashboard-total-students', fallback: 'students-count' },
             { id: 'dashboard-total-units', fallback: 'units-count' },
@@ -2680,22 +2773,37 @@
         
         elements.forEach(({ id, fallback }) => {
             const el = document.getElementById(id) || (fallback ? document.getElementById(fallback) : null);
-            if (el && !el.querySelector('.fa-spinner')) {
-                el.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            if (el) {
+                // Only set loading if:
+                // 1. Element doesn't have a spinner already
+                // 2. Element doesn't have valid numeric data
+                // 3. Element doesn't show an error
+                const hasSpinner = el.querySelector('.fa-spinner');
+                const hasData = /^\d+/.test(el.textContent.trim()); // Check if starts with number
+                const hasError = el.textContent.includes('Error');
+                
+                if (!hasSpinner && !hasData && !hasError) {
+                    el.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+                }
             }
         });
         
-        // Set loading state for admission list
+        // Set loading state for admission list only if it's empty or showing loading
         const admissionTbody = document.getElementById('dashboard-recent-students') || document.getElementById('admission-list')?.querySelector('tbody');
         if (admissionTbody) {
-            admissionTbody.innerHTML = `
-                <tr>
-                    <td colspan="3" class="loading-row" style="text-align: center; padding: 40px;">
-                        <i class="fas fa-spinner fa-spin" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
-                        Loading admissions...
-                    </td>
-                </tr>
-            `;
+            const hasRows = admissionTbody.querySelectorAll('tr:not(.loading-row):not(.error-state)').length > 0;
+            const hasLoading = admissionTbody.querySelector('.loading-row');
+            
+            if (!hasRows && !hasLoading) {
+                admissionTbody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="loading-row" style="text-align: center; padding: 40px;">
+                            <i class="fas fa-spinner fa-spin" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
+                            Loading admissions...
+                        </td>
+                    </tr>
+                `;
+            }
         }
     }
     
@@ -2767,7 +2875,25 @@
     function updateDashboardUI(data) {
         if (!data || typeof data !== 'object') {
             console.error('Invalid data passed to updateDashboardUI:', data);
-            setDashboardErrorStates(new Error('Invalid data received'));
+            // Don't set error states if we have previous success data
+            if (!dashboardLastSuccess) {
+                setDashboardErrorStates(new Error('Invalid data received'));
+            }
+            return;
+        }
+        
+        // Prevent updating if elements don't exist yet (DOM not ready)
+        const testEl = document.getElementById('dashboard-total-students') || 
+                       document.getElementById('students-count') ||
+                       document.getElementById('dashboard-section');
+        if (!testEl) {
+            console.warn('Dashboard elements not found in DOM yet, deferring update');
+            // Retry after a short delay
+            setTimeout(() => {
+                if (document.getElementById('dashboard-total-students') || document.getElementById('students-count')) {
+                    updateDashboardUI(data);
+                }
+            }, 100);
             return;
         }
         
@@ -2776,7 +2902,10 @@
         const studentsEl = document.getElementById('dashboard-total-students') || document.getElementById('students-count');
         const studentsStatusEl = document.getElementById('dashboard-students-status');
         if (studentsEl) {
-            studentsEl.textContent = studentsCount.toLocaleString();
+            // Only update if not already showing an error
+            if (!studentsEl.textContent.includes('Error') || studentsCount > 0) {
+                studentsEl.textContent = studentsCount.toLocaleString();
+            }
         }
         if (studentsStatusEl) {
             studentsStatusEl.textContent = 'Active';
@@ -2787,7 +2916,10 @@
         const unitsCount = parseInt(data.total_units) || 0;
         const unitsEl = document.getElementById('dashboard-total-units') || document.getElementById('units-count');
         if (unitsEl) {
-            unitsEl.textContent = unitsCount.toLocaleString();
+            // Only update if not already showing an error
+            if (!unitsEl.textContent.includes('Error') || unitsCount > 0) {
+                unitsEl.textContent = unitsCount.toLocaleString();
+            }
         }
         const unitsStatusEl = document.getElementById('dashboard-units-status');
         if (unitsStatusEl) {
@@ -2807,7 +2939,10 @@
         const coursesEl = document.getElementById('dashboard-total-courses');
         const coursesStatusEl = document.getElementById('dashboard-courses-status');
         if (coursesEl) {
-            coursesEl.textContent = coursesCount.toLocaleString();
+            // Only update if not already showing an error
+            if (!coursesEl.textContent.includes('Error') || coursesCount > 0) {
+                coursesEl.textContent = coursesCount.toLocaleString();
+            }
         }
         if (coursesStatusEl) {
             coursesStatusEl.textContent = 'Active';
@@ -2831,7 +2966,10 @@
         const lecturersEl = document.getElementById('dashboard-total-lecturers');
         const lecturersStatusEl = document.getElementById('dashboard-lecturers-status');
         if (lecturersEl) {
-            lecturersEl.textContent = lecturersCount.toLocaleString();
+            // Only update if not already showing an error
+            if (!lecturersEl.textContent.includes('Error') || lecturersCount > 0) {
+                lecturersEl.textContent = lecturersCount.toLocaleString();
+            }
         }
         if (lecturersStatusEl) {
             lecturersStatusEl.textContent = 'Active';
@@ -2946,6 +3084,8 @@
      */
     function refreshDashboardStats() {
         dashboardStatsCache = null;
+        dashboardLastSuccess = null;
+        dashboardLoading = false; // Reset loading flag
         return loadDashboardStats();
     }
 
