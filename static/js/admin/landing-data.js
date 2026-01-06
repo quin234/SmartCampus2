@@ -1857,12 +1857,22 @@
             const lecturerData = await apiCall(`lecturers/${lecturerId}/`);
             if (lecturerData) {
                 currentLecturerData = lecturerData;
-                document.getElementById('lecturer-units-modal-title').textContent = `${lecturerData.full_name}'s Units`;
-                document.getElementById('lecturer-units-name').textContent = lecturerData.full_name;
-                document.getElementById('lecturer-units-details').innerHTML = `
+                const modalTitleEl = document.getElementById('lecturer-units-modal-title');
+                const modalNameEl = document.getElementById('lecturer-units-name');
+                const modalDetailsEl = document.getElementById('lecturer-units-details');
+                
+                if (modalTitleEl) {
+                    modalTitleEl.textContent = `${lecturerData.full_name}'s Units`;
+                }
+                if (modalNameEl) {
+                    modalNameEl.textContent = lecturerData.full_name;
+                }
+                if (modalDetailsEl) {
+                    modalDetailsEl.innerHTML = `
                     <div>${lecturerData.email || ''}</div>
                     <div style="font-size: 12px; color: var(--text-muted);">Staff: ${lecturerData.username || '-'}</div>
                 `;
+                }
             }
         } catch (error) {
             console.error('Error loading lecturer data:', error);
@@ -2654,6 +2664,20 @@
     let dashboardLastSuccess = null;
 
     async function loadDashboardStats() {
+        // Ensure DOM is ready before proceeding
+        if (document.readyState === 'loading') {
+            console.log('DOM not ready yet, waiting for DOMContentLoaded');
+            return new Promise((resolve) => {
+                if (document.readyState === 'complete') {
+                    resolve(loadDashboardStats());
+                } else {
+                    document.addEventListener('DOMContentLoaded', () => {
+                        resolve(loadDashboardStats());
+                    });
+                }
+            });
+        }
+        
         // Prevent multiple simultaneous calls
         if (dashboardLoading) {
             console.log('Dashboard stats already loading, skipping duplicate call');
@@ -2888,10 +2912,20 @@
                        document.getElementById('dashboard-section');
         if (!testEl) {
             console.warn('Dashboard elements not found in DOM yet, deferring update');
-            // Retry after a short delay
-            setTimeout(() => {
-                if (document.getElementById('dashboard-total-students') || document.getElementById('students-count')) {
+            console.log('DOM ready state:', document.readyState);
+            console.log('dashboard-section element:', document.getElementById('dashboard-section'));
+            // Retry after a short delay with exponential backoff (max 3 retries)
+            let retryCount = 0;
+            const maxRetries = 3;
+            const retryInterval = setInterval(() => {
+                retryCount++;
+                const retryTestEl = document.getElementById('dashboard-total-students') || document.getElementById('students-count');
+                if (retryTestEl) {
+                    clearInterval(retryInterval);
                     updateDashboardUI(data);
+                } else if (retryCount >= maxRetries) {
+                    clearInterval(retryInterval);
+                    console.error('Dashboard elements not found after', maxRetries, 'retries. DOM may not be ready.');
                 }
             }, 100);
             return;
@@ -2900,12 +2934,20 @@
         // Update overview cards with null checks and proper number formatting
         const studentsCount = parseInt(data.total_students) || 0;
         const studentsEl = document.getElementById('dashboard-total-students') || document.getElementById('students-count');
+        
+        // Debug: Log the element to see if it exists
+        console.log('dashboard-total-students element:', document.getElementById('dashboard-total-students'));
+        console.log('students-count element:', document.getElementById('students-count'));
+        console.log('studentsEl:', studentsEl);
+        
         const studentsStatusEl = document.getElementById('dashboard-students-status');
         if (studentsEl) {
             // Only update if not already showing an error
             if (!studentsEl.textContent.includes('Error') || studentsCount > 0) {
                 studentsEl.textContent = studentsCount.toLocaleString();
             }
+        } else {
+            console.warn('Dashboard students element not found. Element IDs checked: dashboard-total-students, students-count');
         }
         if (studentsStatusEl) {
             studentsStatusEl.textContent = 'Active';
