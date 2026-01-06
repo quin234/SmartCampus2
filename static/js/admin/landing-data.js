@@ -2652,12 +2652,12 @@
             console.error('Error loading dashboard stats:', error);
             // Show error state
             const studentsEl = document.getElementById('dashboard-total-students');
-            const deptEl = document.getElementById('dashboard-total-departments');
+            const unitsEl = document.getElementById('dashboard-total-units');
             const coursesEl = document.getElementById('dashboard-total-courses');
             const lecturersEl = document.getElementById('dashboard-total-lecturers');
             
             if (studentsEl) studentsEl.textContent = 'Error';
-            if (deptEl) deptEl.textContent = 'Error';
+            if (unitsEl) unitsEl.textContent = 'Error';
             if (coursesEl) coursesEl.textContent = 'Error';
             if (lecturersEl) lecturersEl.textContent = 'Error';
             
@@ -2671,13 +2671,18 @@
      * Update dashboard UI with statistics
      */
     function updateDashboardUI(data) {
-        // Update overview cards
-        document.getElementById('dashboard-total-students').textContent = data.total_students || 0;
-        document.getElementById('dashboard-students-status').textContent = 'Active';
-        document.getElementById('dashboard-students-status').className = 'card-change positive';
+        // Update overview cards with null checks
+        const studentsEl = document.getElementById('dashboard-total-students');
+        const studentsStatusEl = document.getElementById('dashboard-students-status');
+        if (studentsEl) studentsEl.textContent = data.total_students || 0;
+        if (studentsStatusEl) {
+            studentsStatusEl.textContent = 'Active';
+            studentsStatusEl.className = 'card-change positive';
+        }
 
         // Update units widget (replaces departments)
-        document.getElementById('dashboard-total-units').textContent = data.total_units || 0;
+        const unitsEl = document.getElementById('dashboard-total-units');
+        if (unitsEl) unitsEl.textContent = data.total_units || 0;
         const unitsStatusEl = document.getElementById('dashboard-units-status');
         if (unitsStatusEl) {
             const withoutLecturer = data.units_without_lecturer || 0;
@@ -2691,13 +2696,21 @@
             unitsStatusEl.className = 'card-change neutral';
         }
 
-        document.getElementById('dashboard-total-courses').textContent = data.total_courses || 0;
-        document.getElementById('dashboard-courses-status').textContent = 'Active';
-        document.getElementById('dashboard-courses-status').className = 'card-change positive';
+        const coursesEl = document.getElementById('dashboard-total-courses');
+        const coursesStatusEl = document.getElementById('dashboard-courses-status');
+        if (coursesEl) coursesEl.textContent = data.total_courses || 0;
+        if (coursesStatusEl) {
+            coursesStatusEl.textContent = 'Active';
+            coursesStatusEl.className = 'card-change positive';
+        }
 
-        document.getElementById('dashboard-total-lecturers').textContent = data.total_lecturers || 0;
-        document.getElementById('dashboard-lecturers-status').textContent = 'Active';
-        document.getElementById('dashboard-lecturers-status').className = 'card-change positive';
+        const lecturersEl = document.getElementById('dashboard-total-lecturers');
+        const lecturersStatusEl = document.getElementById('dashboard-lecturers-status');
+        if (lecturersEl) lecturersEl.textContent = data.total_lecturers || 0;
+        if (lecturersStatusEl) {
+            lecturersStatusEl.textContent = 'Active';
+            lecturersStatusEl.className = 'card-change positive';
+        }
 
         // Update recent students table (compact widget)
         const recentStudentsTbody = document.getElementById('dashboard-recent-students');
