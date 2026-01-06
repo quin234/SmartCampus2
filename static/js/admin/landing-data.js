@@ -2634,6 +2634,9 @@
         // Initialize date immediately
         initializeDashboardDate();
         
+        // Set loading states for all elements
+        setDashboardLoadingStates();
+        
         // Return cached data if available
         if (dashboardStatsCache) {
             updateDashboardUI(dashboardStatsCache);
@@ -2643,27 +2646,118 @@
         try {
             const data = await apiCall('dashboard/overview/');
             
-            if (data) {
+            if (data && typeof data === 'object') {
                 dashboardStatsCache = data;
                 updateDashboardUI(data);
                 return data;
+            } else {
+                throw new Error('Invalid data received from API');
             }
         } catch (error) {
             console.error('Error loading dashboard stats:', error);
-            // Show error state
-            const studentsEl = document.getElementById('dashboard-total-students');
-            const unitsEl = document.getElementById('dashboard-total-units');
-            const coursesEl = document.getElementById('dashboard-total-courses');
-            const lecturersEl = document.getElementById('dashboard-total-lecturers');
-            
-            if (studentsEl) studentsEl.textContent = 'Error';
-            if (unitsEl) unitsEl.textContent = 'Error';
-            if (coursesEl) coursesEl.textContent = 'Error';
-            if (lecturersEl) lecturersEl.textContent = 'Error';
+            // Show user-friendly error messages
+            setDashboardErrorStates(error);
             
             // Still initialize date and set mock values for year/semester
             initializeDashboardDate();
             updateAcademicInfo({ current_academic_year: '2024/2025', current_semester: 1 });
+            
+            // Re-throw error for caller to handle if needed
+            throw error;
+        }
+    }
+    
+    /**
+     * Set loading states for dashboard elements
+     */
+    function setDashboardLoadingStates() {
+        const elements = [
+            { id: 'dashboard-total-students', fallback: 'students-count' },
+            { id: 'dashboard-total-units', fallback: 'units-count' },
+            { id: 'dashboard-total-courses', fallback: null },
+            { id: 'dashboard-total-lecturers', fallback: null }
+        ];
+        
+        elements.forEach(({ id, fallback }) => {
+            const el = document.getElementById(id) || (fallback ? document.getElementById(fallback) : null);
+            if (el && !el.querySelector('.fa-spinner')) {
+                el.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            }
+        });
+        
+        // Set loading state for admission list
+        const admissionTbody = document.getElementById('dashboard-recent-students') || document.getElementById('admission-list')?.querySelector('tbody');
+        if (admissionTbody) {
+            admissionTbody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="loading-row" style="text-align: center; padding: 40px;">
+                        <i class="fas fa-spinner fa-spin" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
+                        Loading admissions...
+                    </td>
+                </tr>
+            `;
+        }
+    }
+    
+    /**
+     * Set error states for dashboard elements with user-friendly messages
+     */
+    function setDashboardErrorStates(error) {
+        const errorMessage = error?.message || 'Failed to load data';
+        const userFriendlyMessage = errorMessage.includes('401') || errorMessage.includes('403') 
+            ? 'Authentication required' 
+            : errorMessage.includes('404')
+            ? 'Data not found'
+            : errorMessage.includes('network') || errorMessage.includes('fetch')
+            ? 'Network error. Please check your connection.'
+            : 'Unable to load data. Please try again.';
+        
+        // Update main dashboard elements
+        const elements = [
+            { id: 'dashboard-total-students', fallback: 'students-count' },
+            { id: 'dashboard-total-units', fallback: 'units-count' },
+            { id: 'dashboard-total-courses', fallback: 'courses-list' },
+            { id: 'dashboard-total-lecturers', fallback: 'lecturers-list' }
+        ];
+        
+        elements.forEach(({ id, fallback }) => {
+            const el = document.getElementById(id) || (fallback ? document.getElementById(fallback) : null);
+            if (el) {
+                el.innerHTML = `<span style="color: var(--error-color, #ef4444);" title="${userFriendlyMessage}">Error</span>`;
+            }
+        });
+        
+        // Update status elements
+        const statusElements = [
+            'dashboard-students-status',
+            'dashboard-units-status',
+            'dashboard-courses-status',
+            'dashboard-lecturers-status'
+        ];
+        
+        statusElements.forEach(statusId => {
+            const statusEl = document.getElementById(statusId);
+            if (statusEl) {
+                statusEl.innerHTML = `<span style="color: var(--error-color, #ef4444); font-size: 11px;">${userFriendlyMessage}</span>`;
+                statusEl.className = 'card-change negative';
+            }
+        });
+        
+        // Update admission list with error message
+        const admissionTbody = document.getElementById('dashboard-recent-students') || document.getElementById('admission-list')?.querySelector('tbody');
+        if (admissionTbody) {
+            admissionTbody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="error-state" style="text-align: center; padding: 40px; color: var(--error-color, #ef4444);">
+                        <i class="fas fa-exclamation-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
+                        <p style="margin: 0; font-size: 14px;">${userFriendlyMessage}</p>
+                        <button onclick="window.LandingData?.refreshDashboardStats() || location.reload()" 
+                                style="margin-top: 12px; padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            Retry
+                        </button>
+                    </td>
+                </tr>
+            `;
         }
     }
 
@@ -2671,22 +2765,34 @@
      * Update dashboard UI with statistics
      */
     function updateDashboardUI(data) {
-        // Update overview cards with null checks
-        const studentsEl = document.getElementById('dashboard-total-students');
+        if (!data || typeof data !== 'object') {
+            console.error('Invalid data passed to updateDashboardUI:', data);
+            setDashboardErrorStates(new Error('Invalid data received'));
+            return;
+        }
+        
+        // Update overview cards with null checks and proper number formatting
+        const studentsCount = parseInt(data.total_students) || 0;
+        const studentsEl = document.getElementById('dashboard-total-students') || document.getElementById('students-count');
         const studentsStatusEl = document.getElementById('dashboard-students-status');
-        if (studentsEl) studentsEl.textContent = data.total_students || 0;
+        if (studentsEl) {
+            studentsEl.textContent = studentsCount.toLocaleString();
+        }
         if (studentsStatusEl) {
             studentsStatusEl.textContent = 'Active';
             studentsStatusEl.className = 'card-change positive';
         }
 
         // Update units widget (replaces departments)
-        const unitsEl = document.getElementById('dashboard-total-units');
-        if (unitsEl) unitsEl.textContent = data.total_units || 0;
+        const unitsCount = parseInt(data.total_units) || 0;
+        const unitsEl = document.getElementById('dashboard-total-units') || document.getElementById('units-count');
+        if (unitsEl) {
+            unitsEl.textContent = unitsCount.toLocaleString();
+        }
         const unitsStatusEl = document.getElementById('dashboard-units-status');
         if (unitsStatusEl) {
-            const withoutLecturer = data.units_without_lecturer || 0;
-            const withoutCourse = data.units_without_course || 0;
+            const withoutLecturer = parseInt(data.units_without_lecturer) || 0;
+            const withoutCourse = parseInt(data.units_without_course) || 0;
             unitsStatusEl.innerHTML = `
                 <div style="font-size: 11px; line-height: 1.4;">
                     <div>Without Lecturer: <strong>${withoutLecturer}</strong></div>
@@ -2696,41 +2802,94 @@
             unitsStatusEl.className = 'card-change neutral';
         }
 
+        // Update courses count
+        const coursesCount = parseInt(data.total_courses) || 0;
         const coursesEl = document.getElementById('dashboard-total-courses');
         const coursesStatusEl = document.getElementById('dashboard-courses-status');
-        if (coursesEl) coursesEl.textContent = data.total_courses || 0;
+        if (coursesEl) {
+            coursesEl.textContent = coursesCount.toLocaleString();
+        }
         if (coursesStatusEl) {
             coursesStatusEl.textContent = 'Active';
             coursesStatusEl.className = 'card-change positive';
         }
+        
+        // Update courses-list element if it exists (for display purposes)
+        const coursesListEl = document.getElementById('courses-list');
+        if (coursesListEl && Array.isArray(data.recent_courses)) {
+            if (data.recent_courses.length > 0) {
+                coursesListEl.innerHTML = data.recent_courses.map(course => 
+                    `<div class="course-item">${course.name || course}</div>`
+                ).join('');
+            } else {
+                coursesListEl.innerHTML = '<div class="empty-state">No courses available</div>';
+            }
+        }
 
+        // Update lecturers count
+        const lecturersCount = parseInt(data.total_lecturers) || 0;
         const lecturersEl = document.getElementById('dashboard-total-lecturers');
         const lecturersStatusEl = document.getElementById('dashboard-lecturers-status');
-        if (lecturersEl) lecturersEl.textContent = data.total_lecturers || 0;
+        if (lecturersEl) {
+            lecturersEl.textContent = lecturersCount.toLocaleString();
+        }
         if (lecturersStatusEl) {
             lecturersStatusEl.textContent = 'Active';
             lecturersStatusEl.className = 'card-change positive';
         }
+        
+        // Update lecturers-list element if it exists
+        const lecturersListEl = document.getElementById('lecturers-list');
+        if (lecturersListEl && Array.isArray(data.recent_lecturers)) {
+            if (data.recent_lecturers.length > 0) {
+                lecturersListEl.innerHTML = data.recent_lecturers.map(lecturer => 
+                    `<div class="lecturer-item">${lecturer.full_name || lecturer.name || lecturer}</div>`
+                ).join('');
+            } else {
+                lecturersListEl.innerHTML = '<div class="empty-state">No lecturers available</div>';
+            }
+        }
 
-        // Update recent students table (compact widget)
+        // Update recent students table (admission list) - this is the critical fix
         const recentStudentsTbody = document.getElementById('dashboard-recent-students');
-        if (recentStudentsTbody) {
-            if (data.recent_students && data.recent_students.length > 0) {
+        const admissionListTbody = document.getElementById('admission-list')?.querySelector('tbody');
+        const tbodyToUpdate = recentStudentsTbody || admissionListTbody;
+        
+        if (tbodyToUpdate) {
+            if (data.recent_students && Array.isArray(data.recent_students) && data.recent_students.length > 0) {
                 // Limit to 5 students for compact display
                 const studentsToShow = data.recent_students.slice(0, 5);
-                recentStudentsTbody.innerHTML = studentsToShow.map(student => `
-                    <tr class="recent-student-row" data-student-id="${student.id}" onclick="handleRecentStudentClick(${student.id}, event)">
-                        <td>${student.admission_number || '-'}</td>
-                        <td>${student.full_name || '-'}</td>
-                        <td>${student.created_at || '-'}</td>
-                    </tr>
-                `).join('');
+                tbodyToUpdate.innerHTML = studentsToShow.map(student => {
+                    const admissionNo = student.admission_number || '-';
+                    const fullName = student.full_name || '-';
+                    const dateAdded = student.created_at || '-';
+                    const studentId = student.id || null;
+                    
+                    // Escape HTML to prevent XSS
+                    const escapeHtml = (text) => {
+                        const div = document.createElement('div');
+                        div.textContent = text;
+                        return div.innerHTML;
+                    };
+                    
+                    const onClickHandler = studentId 
+                        ? `onclick="if(typeof handleRecentStudentClick === 'function') handleRecentStudentClick(${studentId}, event);"`
+                        : '';
+                    
+                    return `
+                        <tr class="recent-student-row" ${studentId ? `data-student-id="${studentId}"` : ''} ${onClickHandler} style="cursor: ${studentId ? 'pointer' : 'default'};">
+                            <td>${escapeHtml(admissionNo)}</td>
+                            <td>${escapeHtml(fullName)}</td>
+                            <td>${escapeHtml(dateAdded)}</td>
+                        </tr>
+                    `;
+                }).join('');
             } else {
-                recentStudentsTbody.innerHTML = `
+                tbodyToUpdate.innerHTML = `
                     <tr>
-                        <td colspan="3" class="empty-state">
-                            <i class="fas fa-user-graduate"></i>
-                            <p>No recent students</p>
+                        <td colspan="3" class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary, #6b7280);">
+                            <i class="fas fa-user-graduate" style="font-size: 32px; margin-bottom: 12px; display: block; opacity: 0.3;"></i>
+                            <p style="margin: 0; font-size: 14px;">No recent admissions</p>
                         </td>
                     </tr>
                 `;
